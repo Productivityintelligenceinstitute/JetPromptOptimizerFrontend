@@ -38,37 +38,28 @@ export function Navbar() {
             />
           </div>
         </Link>
-
         {/* Primary navigation */}
-        <div className="flex items-center gap-4 md:gap-6">
-          <ul className="hidden items-center gap-6 text-sm font-medium text-gray-90 md:flex">
-            {MAIN_NAV_ITEMS.map((item) => (
-              <li key={item.key}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "relative pb-1 transition-colors hover:text-jet-blue",
-                    isActive(item.href) && "text-jet-blue"
-                  )}
-                  aria-current={isActive(item.href) ? "page" : undefined}
-                >
-                  {item.label}
-                  {isActive(item.href) && (
-                    <span className="absolute inset-x-0 -bottom-0.5 h-0.5 rounded-full bg-signal-orange" />
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
+<div className="flex items-center gap-4 md:gap-6">
+  <ul className="hidden items-center gap-6 text-[18px] font-semibold text-gray-90 md:flex">
+    {MAIN_NAV_ITEMS.map((item) => (
+      <li key={item.key}>
+        <Link
+          href={item.href}
+          className={cn(
+            "relative pb-1 transition-colors hover:text-jet-blue",
+            isActive(item.href) && "text-signal-orange" // change text color when active
+          )}
+          aria-current={isActive(item.href) ? "page" : undefined}
+        >
+          {item.label}
+          {/* removed the underline */}
+        </Link>
+      </li>
+    ))}
+  </ul>
+  <button className="rounded-[12px] bg-jet-blue px-4 h-[40px] py-2 text-sm font-semibold text-soft-white shadow-sm transition-colors hover:bg-jet-blue/90">Get Started</button>
+</div>
 
-          {/* CTA */}
-          <Link
-            href={CTA_NAV_ITEM.href}
-            className="rounded-full bg-jet-blue px-4 py-2 text-sm font-semibold text-soft-white shadow-sm transition-colors hover:bg-jet-blue/90"
-          >
-            {CTA_NAV_ITEM.label}
-          </Link>
-        </div>
       </nav>
     </header>
   );
