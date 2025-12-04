@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+:root {
+  /* Light mode neutrals based on Soft White and Gray 90 */
+  --background: #fafafa; /* Soft White */
+  --foreground: #1c1c1c; /* Gray 90 */
+
+  /* Brand and semantic colors */
+  --color-jet-blue: #003366; /* Jet Blue – depth, logic, integrity */
+  --color-signal-orange: #ff6f00; /* Signal Orange – attention without aggression */
+  --color-gray-90: #1c1c1c; /* Gray 90 – calibration, discipline */
+  --color-soft-white: #fafafa; /* Soft White – clarity, space for thought */
+}
+
+@theme inline {
+  /* Expose neutrals to Tailwind color tokens */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Expose brand colors as Tailwind color tokens */
+  --color-jet-blue: var(--color-jet-blue);
+  --color-signal-orange: var(--color-signal-orange);
+  --color-gray-90: var(--color-gray-90);
+  --color-soft-white: var(--color-soft-white);
+
+  /* Typography tokens hooked up to next/font variables */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-serif);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark mode inverts the neutral pair while preserving brand colors */
+    --background: #1c1c1c; /* Gray 90 */
+    --foreground: #fafafa; /* Soft White */
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
