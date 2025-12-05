@@ -3,7 +3,7 @@ import { FEATURES } from '@/shared/constants/features';
 
 export default function Features() {
   return (
-    <section className="bg-soft-white py-16 sm:py-24">
+    <section className="bg-white py-16 sm:py-24">
       <div className="mx-auto max-w-5xl px-4">
         <header className="text-center">
           <h2 className="mt-3 text-balance text-2xl font-semibold text-jet-blue sm:text-3xl md:text-4xl">

@@ -24,7 +24,7 @@ export function Navbar() {
   };
 
   return (
-    <header className="border-b border-soft-white/60 bg-soft-white/90 backdrop-blur">
+    <header className=" bg-white backdrop-blur fixed top-0 left-0 right-0 z-50">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
         {/* Logo and brand */}
         <Link href={APP_ROUTES.home} className="flex items-center gap-2">
