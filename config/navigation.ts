@@ -1,9 +1,8 @@
 export const APP_ROUTES = {
   home: "/",
-  features: "/features",
-  pricing: "/pricing",
-  docs: "/docs",
-  admin: "/admin",
+  features: "/#features",
+  pricing: "/#pricing",
+  resources: "/resources",
   getStarted: "/get-started",
 } as const;
 
@@ -20,8 +19,7 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { key: "home", label: "Home", href: APP_ROUTES.home },
   { key: "features", label: "Features", href: APP_ROUTES.features },
   { key: "pricing", label: "Pricing", href: APP_ROUTES.pricing },
-  { key: "docs", label: "Docs", href: APP_ROUTES.docs },
-  { key: "admin", label: "Admin", href: APP_ROUTES.admin },
+  { key: "resources", label: "Resources", href: APP_ROUTES.resources },
 ];
 
 export const CTA_NAV_ITEM: NavItem = {

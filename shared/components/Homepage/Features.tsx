@@ -3,7 +3,7 @@ import { FEATURES } from '@/shared/constants/features';
 
 export default function Features() {
   return (
-    <section className="bg-white py-16 sm:py-24">
+    <section id="features" className="bg-white py-16 sm:py-24">
       <div className="mx-auto max-w-5xl px-4">
         <header className="text-center">
           <h2 className="mt-3 text-balance text-2xl font-semibold text-jet-blue sm:text-3xl md:text-4xl">
@@ -21,8 +21,8 @@ export default function Features() {
               className="flex h-full flex-col gap-2 rounded-3xl border border-[#dadada] bg-white/80 p-6 sm:px-8"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rgba-51_83_134_0.07 text-signal-orange">
-                <Image 
-                  src={feature.icon} 
+                <Image
+                  src={feature.icon}
                   alt={feature.alt}
                   width={24}
                   height={24}

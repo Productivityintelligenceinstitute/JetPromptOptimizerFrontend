@@ -51,14 +51,14 @@ export default function Pricing() {
   ];
 
   return (
-    <section className="py-12 sm:py-16 bg-white">
+    <section id="pricing" className="py-12 sm:py-16 bg-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-medium  text-gray-900 sm:text-4xl mb-3">
-           Subscription
+            Subscription
           </h2>
           <p className="text-sm text-gray-600 mt-4 max-w-2xl mx-auto">
-           Start with essential features that sharpen your prompts instantly. Step up to the Pro Plan to unlock deeper AI optimization, enhanced structure, and precision-crafted system prompts.
+            Start with essential features that sharpen your prompts instantly. Step up to the Pro Plan to unlock deeper AI optimization, enhanced structure, and precision-crafted system prompts.
           </p>
         </div>
 
@@ -66,11 +66,10 @@ export default function Pricing() {
           {plans.map((plan) => (
             <div
               key={plan.name}
-              className={`relative rounded-2xl p-8 transition-all duration-300 shadow-sm ${
-                plan.featured 
-                  ? ' bg-[#335386] transform scale-110 z-10' 
+              className={`relative rounded-2xl p-8 transition-all duration-300 shadow-sm ${plan.featured
+                  ? ' bg-[#335386] transform scale-110 z-10'
                   : 'bg-white border border-gray-200 hover:border-gray-300'
-              } flex flex-col h-full`}
+                } flex flex-col h-full`}
             >
               <h3 className={`text-xl font-semibold mb-1 ${plan.featured ? 'text-white' : 'text-gray-900'}`}>
                 {plan.name}
@@ -81,23 +80,23 @@ export default function Pricing() {
               <div className="mb-6">
                 <p className={`text-4xl font-regular ${plan.featured ? 'text-white' : 'text-gray-900'}`}>
                   {plan.price}
-               <span className={`text-base font-medium ${plan.featured ? 'text-white' : 'text-black'}`}>/month</span>
+                  <span className={`text-base font-medium ${plan.featured ? 'text-white' : 'text-black'}`}>/month</span>
                 </p>
               </div>
               <ul className="space-y-3 mb-8 flex-grow">
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-start">
-                    <svg 
-                      className={`h-5 w-5 flex-shrink-0 mt-0.5 ${plan.featured ? 'text-blue-300' : 'text-[#ED6730]'}`} 
-                      fill="none" 
-                      viewBox="0 0 24 24" 
+                    <svg
+                      className={`h-5 w-5 flex-shrink-0 mt-0.5 ${plan.featured ? 'text-blue-300' : 'text-[#ED6730]'}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
                       stroke="currentColor"
                     >
-                      <path 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        strokeWidth={2} 
-                        d="M5 13l4 4L19 7" 
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
                       />
                     </svg>
                     <span className={`ml-3 text-sm ${plan.featured ? 'text-white' : 'text-gray-600'}`}>
@@ -109,13 +108,12 @@ export default function Pricing() {
               <div className="mt-auto">
                 <Link
                   href={plan.href}
-                  className={`block w-full rounded-md px-4 py-3 text-center font-medium transition-all ${
-                    plan.featured
+                  className={`block w-full rounded-md px-4 py-3 text-center font-medium transition-all ${plan.featured
                       ? 'bg-[#FF541F] text-white hover:bg-[#FF541F]/90'
                       : 'bg-white border border-[#FF541F] text-gray-800 hover:bg-[#FF541F]/10'
-                  }`}
+                    }`}
                 >
-                  {plan.cta} 
+                  {plan.cta}
                 </Link>
               </div>
             </div>
