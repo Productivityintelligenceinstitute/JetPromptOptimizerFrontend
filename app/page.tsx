@@ -7,7 +7,8 @@ import PromptStages from "@/shared/components/Homepage/PromptStages";
 import Testimonials from "@/shared/components/Homepage/Testimonials";
 import Pricing from "@/shared/components/Homepage/Pricing";
 import Guarantee from "@/shared/components/Homepage/Guarantee";
-
+import PricingCallout from "@/shared/components/Homepage/PricingCallout";
+import Design from "@/shared/components/Homepage/Design"
 export default function HomePage() {
   return (
     <main>
@@ -16,7 +17,9 @@ export default function HomePage() {
       <StatsStrip />
       <PromptStages />
       <Guarantee />
+      <PricingCallout/>
       <Testimonials />
+      <Design/>
       <Introduction />
       <Pricing />
     </main>
