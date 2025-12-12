@@ -9,6 +9,7 @@ import Pricing from "@/shared/components/Homepage/Pricing";
 import Guarantee from "@/shared/components/Homepage/Guarantee";
 import PricingCallout from "@/shared/components/Homepage/PricingCallout";
 import Design from "@/shared/components/Homepage/Design"
+import BonusSection from "@/shared/components/Homepage/BonusSection";
 export default function HomePage() {
   return (
     <main>
@@ -16,12 +17,13 @@ export default function HomePage() {
       <Features />
       <StatsStrip />
       <PromptStages />
-      <Guarantee />
       <PricingCallout/>
-      <Testimonials />
-      <Design/>
+      <Guarantee />
       <Introduction />
+      <BonusSection/>
+      <Design/>
       <Pricing />
+      <Testimonials />
     </main>
   );
 }
