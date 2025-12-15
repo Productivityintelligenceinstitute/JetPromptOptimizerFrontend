@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Inter, Source_Serif_4, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/shared/components/navbar/Navbar";
-import Footer from "@/shared/components/Footer/Footer";
+import LayoutWrapper from "@/shared/components/LayoutWrapper";
+import { AuthProvider } from "@/shared/context/AuthContext";
+import { ReduxProvider } from "@/shared/store/ReduxProvider";
 const inter = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -19,7 +20,7 @@ const jetBrainsMono = JetBrains_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
-}); 
+});
 
 export const metadata: Metadata = {
   title: "Jet Prompt Optimizer",
@@ -34,11 +35,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
+        suppressHydrationWarning={true}
         className={`${inter.variable} ${sourceSerif.variable} ${jetBrainsMono.variable} antialiased`}
       >
-        <Navbar />
-        {children}
-        <Footer/>
+        <ReduxProvider>
+          <AuthProvider>
+            <LayoutWrapper>
+              {children}
+            </LayoutWrapper>
+          </AuthProvider>
+        </ReduxProvider>
       </body>
     </html>
   );

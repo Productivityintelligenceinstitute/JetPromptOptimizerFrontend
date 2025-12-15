@@ -7,9 +7,11 @@ import { useEffect, useState } from "react";
 
 import { APP_ROUTES, CTA_NAV_ITEM, MAIN_NAV_ITEMS } from "@/config/navigation";
 import { cn } from "@/shared/lib/cn";
+import { useAuth } from "@/shared/context/AuthContext";
 
 export function Navbar() {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   // Avoid hydration mismatches by only enabling "active" styles after mount.
   const [mounted, setMounted] = useState(false);
@@ -57,7 +59,26 @@ export function Navbar() {
       </li>
     ))}
   </ul>
-  <button className="rounded-[12px] bg-jet-blue px-4 h-[40px] py-2 text-sm font-semibold text-soft-white shadow-sm transition-colors hover:bg-jet-blue/90">Get Started</button>
+  {user ? (
+    <div className="flex items-center gap-4">
+      <span className="text-sm text-gray-700">Welcome, {user.name || user.email}</span>
+      <button
+        onClick={logout}
+        className="rounded-[12px] bg-gray-200 px-4 h-[40px] py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-300"
+      >
+        Logout
+      </button>
+    </div>
+  ) : (
+    <div className="flex items-center gap-4">
+      <Link
+        href="/signup"
+        className="rounded-[12px] bg-jet-blue px-4 h-[40px] py-2 text-sm font-semibold text-soft-white shadow-sm transition-colors hover:bg-jet-blue/90"
+      >
+        Get Started
+      </Link>
+    </div>
+  )}
 </div>
 
       </nav>

@@ -53,7 +53,7 @@ export default function PricingCallout() {
             {/* CTA Button */}
             <div className="mt-6 sm:mt-8 flex justify-center lg:justify-start">
               <Link
-                href="/get-started"
+                href="/signup"
                 className="inline-block rounded-lg bg-[#ED6730] px-6 py-3 sm:px-8 sm:py-3 text-base  sm:text-lg font-normal text-white shadow-sm hover:bg-[#FF541F]/90 transition-colors"
               >
                 Get Instant Access

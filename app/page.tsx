@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import Hero from "@/shared/components/Homepage/Hero";
 import Introduction from "@/shared/components/Homepage/Introduction";
 import Features from "@/shared/components/Homepage/Features";
@@ -8,7 +9,7 @@ import Testimonials from "@/shared/components/Homepage/Testimonials";
 import Pricing from "@/shared/components/Homepage/Pricing";
 import Guarantee from "@/shared/components/Homepage/Guarantee";
 import PricingCallout from "@/shared/components/Homepage/PricingCallout";
-import Design from "@/shared/components/Homepage/Design"
+import Design from "@/shared/components/Homepage/Design";
 import BonusSection from "@/shared/components/Homepage/BonusSection";
 export default function HomePage() {
   return (
@@ -17,11 +18,11 @@ export default function HomePage() {
       <Features />
       <StatsStrip />
       <PromptStages />
-      <PricingCallout/>
+      <PricingCallout />
       <Guarantee />
       <Introduction />
-      <BonusSection/>
-      <Design/>
+      <BonusSection />
+      <Design />
       <Pricing />
       <Testimonials />
     </main>

@@ -4,6 +4,8 @@ export const APP_ROUTES = {
   pricing: "/#pricing",
   resources: "/resources",
   getStarted: "/get-started",
+  login: "/login",
+  signup: "/signup",
 } as const;
 
 export type AppRouteKey = keyof typeof APP_ROUTES;
