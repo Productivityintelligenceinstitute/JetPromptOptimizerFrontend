@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { APP_ROUTES, CTA_NAV_ITEM, MAIN_NAV_ITEMS } from "@/config/navigation";
 import { cn } from "@/shared/lib/cn";
 import { useAuth } from "@/shared/context/AuthContext";
+import { LogoIcon } from "../icons/user-icons";
+import { NavLogoIcon } from "../icons";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -29,16 +31,11 @@ export function Navbar() {
     <header className=" bg-white backdrop-blur fixed top-0 left-0 right-0 z-50">
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
         {/* Logo and brand */}
-        <Link href={APP_ROUTES.home} className="flex items-center gap-2">
-          <div className="relative h-10 w-14 md:h-14 md:w-14">
-            <Image
-              src="/assets/logo1.jpg"
-              alt="Jet Prompt Optimizer logo"
-              fill
-              className="object-contain"
-              priority
-            />
-          </div>
+        <Link href={APP_ROUTES.home} className="flex items-center  gap-2">
+        <div className="">
+
+       <NavLogoIcon/>
+        </div>
         </Link>
         {/* Primary navigation */}
 <div className="flex items-center gap-4 md:gap-6">
