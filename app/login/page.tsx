@@ -30,7 +30,7 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     try {
       await login(data.email, data.password);
-      router.push('/'); // Redirect to home after login
+      router.push('/chat');
     } catch (error) {
       setError('root', { message: 'Invalid credentials' });
     }

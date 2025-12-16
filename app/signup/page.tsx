@@ -35,7 +35,7 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupForm) => {
     try {
       await signup(data.email, data.password, data.name);
-      router.push('/'); // Redirect to home after signup
+      router.push('/chat'); // Redirect to home after signup
     } catch (error) {
       setError('root', { message: 'Signup failed. Please try again.' });
     }
