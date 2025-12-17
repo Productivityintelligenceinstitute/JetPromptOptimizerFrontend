@@ -4,6 +4,7 @@ import "./globals.css";
 import LayoutWrapper from "@/shared/components/LayoutWrapper";
 import { AuthProvider } from "@/shared/context/AuthContext";
 import { ReduxProvider } from "@/shared/store/ReduxProvider";
+import QueryProvider from "@/shared/components/QueryProvider";
 const inter = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -39,11 +40,13 @@ export default function RootLayout({
         className={`${inter.variable} ${sourceSerif.variable} ${jetBrainsMono.variable} antialiased`}
       >
         <ReduxProvider>
-          <AuthProvider>
-            <LayoutWrapper>
-              {children}
-            </LayoutWrapper>
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <LayoutWrapper>
+                {children}
+              </LayoutWrapper>
+            </AuthProvider>
+          </QueryProvider>
         </ReduxProvider>
       </body>
     </html>

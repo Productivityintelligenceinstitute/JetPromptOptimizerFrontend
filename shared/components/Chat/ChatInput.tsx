@@ -7,9 +7,10 @@ interface ChatInputProps {
     onSendMessage: (message: string) => void;
     initialValue?: string;
     placeholder?: string;
+    isLoading?: boolean;
 }
 
-export default function ChatInput({ onSendMessage, initialValue = '', placeholder = "Message Jet..." }: ChatInputProps) {
+export default function ChatInput({ onSendMessage, initialValue = '', placeholder = "Message Jet...", isLoading = false }: ChatInputProps) {
     const [value, setValue] = useState(initialValue);
 
     useEffect(() => {
@@ -36,7 +37,7 @@ export default function ChatInput({ onSendMessage, initialValue = '', placeholde
                     />
                     <button
                         type="submit"
-                        disabled={!value.trim()}
+                        disabled={!value.trim() || isLoading}
                         className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-gray-100 p-2 text-gray-500 hover:bg-gray-200 disabled:opacity-50"
                     >
                         <SendHorizontal />

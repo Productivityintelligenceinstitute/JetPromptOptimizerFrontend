@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import Cookies from 'js-cookie';
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -14,6 +15,7 @@ interface User {
   id: string;
   email: string;
   name?: string;
+  token: string;
 }
 
 interface AuthContextType {
@@ -31,14 +33,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        const token = await firebaseUser.getIdToken();
+        Cookies.set('token', token, { expires: 7 });
         setUser({
           id: firebaseUser.uid,
           email: firebaseUser.email!,
           name: firebaseUser.displayName || undefined,
+          token,
         });
       } else {
+        Cookies.remove('token');
         setUser(null);
       }
       setIsLoading(false);
@@ -68,11 +74,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await updateProfile(userCredential.user, {
           displayName: name
         });
+        const token = await userCredential.user.getIdToken();
         // Update local state immediately to reflect the name change
         setUser({
           id: userCredential.user.uid,
           email: userCredential.user.email!,
           name: name,
+          token,
         });
       }
     } catch (error) {
