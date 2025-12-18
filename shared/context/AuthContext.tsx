@@ -10,6 +10,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { auth } from '@/shared/lib/firebase';
+import { syncUser } from '@/shared/api/user';
 
 interface User {
   id: string;
@@ -43,6 +44,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: firebaseUser.displayName || undefined,
           token,
         });
+
+        // Sync user with backend
+        try {
+          await syncUser({
+            user_id: firebaseUser.uid,
+            email: firebaseUser.email!,
+            name: firebaseUser.displayName || undefined
+          });
+        } catch (error) {
+          console.error("Failed to sync user with backend:", error);
+        }
       } else {
         Cookies.remove('token');
         setUser(null);
@@ -82,6 +94,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: name,
           token,
         });
+
+        // Sync user with backend to ensure name is updated
+        try {
+          await syncUser({
+            user_id: userCredential.user.uid,
+            email: userCredential.user.email!,
+            name: name
+          });
+        } catch (error) {
+          console.error("Failed to sync user with backend:", error);
+        }
       }
     } catch (error) {
       console.error("Signup error:", error);
