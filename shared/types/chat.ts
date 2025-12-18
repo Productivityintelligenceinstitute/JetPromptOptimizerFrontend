@@ -21,6 +21,7 @@ export interface EmptyStateProps {
 
 export interface ChatAreaProps {
     messages: Message[];
+    isLoading?: boolean;
 }
 
 export interface OptimizationResponse {

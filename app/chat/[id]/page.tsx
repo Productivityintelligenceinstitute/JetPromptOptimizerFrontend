@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import ChatArea from '@/shared/components/Chat/ChatArea';
 import ChatInput from '@/shared/components/Chat/ChatInput';
 import { Message } from '@/shared/types/chat';
@@ -10,23 +10,21 @@ import { useAuth } from '@/shared/context/AuthContext';
 
 export default function ChatSessionPage() {
     const params = useParams();
-    const searchParams = useSearchParams();
     const [messages, setMessages] = useState<Message[]>([]);
     const [chatId, setChatId] = useState<string | undefined>(params.id as string);
     const { mutate: optimize, isPending } = useOptimizePrompt();
     const { user } = useAuth();
-    const initialProcessed = useRef(false);
+    const chatAreaRef = useRef<HTMLDivElement>(null);
 
-    // Load initial message if present
+    // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
-        const initialMsg = searchParams.get('initial');
-        if (initialMsg && !initialProcessed.current) {
-            initialProcessed.current = true;
-            handleSendMessage(initialMsg);
+        if (chatAreaRef.current) {
+            chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight;
         }
-    }, [searchParams]);
+    }, [messages]);
 
     const handleSendMessage = (content: string) => {
+        // Add user message to chat
         const userMsg: Message = {
             id: crypto.randomUUID(),
             role: 'user',
@@ -34,25 +32,49 @@ export default function ChatSessionPage() {
         };
         setMessages((prev) => [...prev, userMsg]);
 
+        // Check authentication
         if (!user) {
             console.error("User not authenticated");
+            const errorMsg: Message = {
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: "Please log in to use the chat feature.",
+            };
+            setMessages((prev) => [...prev, errorMsg]);
             return;
         }
 
+        // Call API to optimize prompt
         optimize(
-            { user_prompt: content, chat_id: chatId, user_id: user.id },
+            {
+                user_prompt: content,
+                chat_id: chatId,
+                user_id: user.id
+            },
             {
                 onSuccess: (data) => {
+                    // Update chat ID if this is a new chat
                     if (!chatId && data.chat_id) {
                         setChatId(data.chat_id);
-                        // Optionally update URL without reload if needed, but might not be strictly necessary for flow
                         window.history.replaceState(null, '', `/chat/${data.chat_id}`);
                     }
+
+                    // Format the AI response
+                    const responseContent = [
+                        data.response.share_message,
+                        '',
+                        '**Optimized Prompt:**',
+                        data.response.optimized_prompt,
+                        '',
+                        data.response.changes_made && data.response.changes_made.length > 0
+                            ? '**Changes Made:**\n' + data.response.changes_made.map(change => `• ${change}`).join('\n')
+                            : ''
+                    ].filter(Boolean).join('\n');
 
                     const aiResponse: Message = {
                         id: crypto.randomUUID(),
                         role: 'assistant',
-                        content: data.response.share_message + "\n\n" + data.response.optimized_prompt,
+                        content: responseContent,
                     };
                     setMessages((prev) => [...prev, aiResponse]);
                 },
@@ -61,7 +83,7 @@ export default function ChatSessionPage() {
                     const errorMsg: Message = {
                         id: crypto.randomUUID(),
                         role: 'assistant',
-                        content: "Sorry, something went wrong while optimizing your prompt.",
+                        content: "Sorry, something went wrong while optimizing your prompt. Please try again.",
                     };
                     setMessages((prev) => [...prev, errorMsg]);
                 },
@@ -70,9 +92,9 @@ export default function ChatSessionPage() {
     };
 
     return (
-        <>
-            <ChatArea messages={messages} />
+        <div className="flex flex-col h-full">
+            <ChatArea messages={messages} isLoading={isPending} ref={chatAreaRef} />
             <ChatInput onSendMessage={handleSendMessage} isLoading={isPending} />
-        </>
+        </div>
     );
 }

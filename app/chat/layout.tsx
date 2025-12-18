@@ -40,7 +40,9 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                         </div>
                     </div>
 
-                    {children}
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        {children}
+                    </div>
                 </main>
             </div>
         </AuthGuard>
