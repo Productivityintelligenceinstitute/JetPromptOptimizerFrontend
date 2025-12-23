@@ -11,6 +11,8 @@ import Guarantee from "@/shared/components/Homepage/Guarantee";
 import PricingCallout from "@/shared/components/Homepage/PricingCallout";
 import Design from "@/shared/components/Homepage/Design";
 import BonusSection from "@/shared/components/Homepage/BonusSection";
+import AppointmentWidget from "@/shared/components/Homepage/AppointmentWidget";
+
 export default function HomePage() {
   return (
     <main>
@@ -25,6 +27,7 @@ export default function HomePage() {
       <Design />
       <Pricing />
       <Testimonials />
+      <AppointmentWidget />
     </main>
   );
 }

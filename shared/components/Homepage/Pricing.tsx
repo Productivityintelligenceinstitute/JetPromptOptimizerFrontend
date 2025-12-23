@@ -80,7 +80,7 @@ export default function Pricing() {
                 <ul className="space-y-3">
                   {plan.features.map((feature, index) => (
                     <li key={index} className="flex items-start gap-3">
-                      <CircleIcon className="w-4 h-4 mt-0.5" />
+                      <CircleIcon className="w-[18px] h-[18px] flex-shrink-0" />
 
                       <span className={`text-sm ${plan.featureColor}`}>
                         {feature}
