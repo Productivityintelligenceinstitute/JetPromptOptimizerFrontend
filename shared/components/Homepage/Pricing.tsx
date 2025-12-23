@@ -52,7 +52,13 @@ export default function Pricing() {
               {/* Price */}
               <div className="mb-6">
                 <div className="flex items-baseline gap-2">
-                  <span className={`text-3xl sm:text-4xl font-normal ${plan.textColor}`}>
+                  <span
+                    className={`${
+                      plan.name === 'Premium / Enterprise'
+                        ? 'text-2xl sm:text-3xl'
+                        : 'text-3xl sm:text-4xl'
+                    } font-normal ${plan.textColor}`}
+                  >
                     {plan.price}
                   </span>
                   <span className={`text-sm ${plan.descColor}`}>
