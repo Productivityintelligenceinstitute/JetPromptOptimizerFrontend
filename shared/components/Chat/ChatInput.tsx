@@ -33,7 +33,7 @@ export default function ChatInput({ onSendMessage, initialValue = '', placeholde
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
                         placeholder={placeholder}
-                        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-4 pr-12 shadow-sm focus:border-gray-300 focus:outline-none focus:ring-0"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-4 pr-12 shadow-sm focus:border-gray-300 focus:outline-none focus:ring-0 text-gray-900"
                     />
                     <button
                         type="submit"

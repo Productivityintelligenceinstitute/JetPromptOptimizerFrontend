@@ -140,7 +140,7 @@ export default function AppointmentWidget() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 border-none outline-none text-sm placeholder:text-gray-400"
+              className="flex-1 border-none outline-none text-sm placeholder:text-gray-400 text-gray-900"
               placeholder="Type your question..."
             />
             <button
