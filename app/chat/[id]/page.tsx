@@ -11,7 +11,10 @@ import { useAuth } from '@/shared/context/AuthContext';
 export default function ChatSessionPage() {
     const params = useParams();
     const [messages, setMessages] = useState<Message[]>([]);
-    const [chatId, setChatId] = useState<string | undefined>(params.id as string);
+    // Only set chatId if we have a valid ID from params (not "new")
+    const [chatId, setChatId] = useState<string | undefined>(
+        params.id && params.id !== 'new' ? (params.id as string) : undefined
+    );
     const { mutate: optimize, isPending } = useOptimizePrompt();
     const { user } = useAuth();
     const chatAreaRef = useRef<HTMLDivElement>(null);
@@ -45,17 +48,19 @@ export default function ChatSessionPage() {
         }
 
         // Call API to optimize prompt
+        // Only pass chat_id if it exists (existing chat), otherwise backend will create new chat
         optimize(
             {
                 user_prompt: content,
-                chat_id: chatId,
-                user_id: user.id
+                chat_id: chatId || undefined, // Only pass if chatId exists
+                user_id: user.user_id
             },
             {
                 onSuccess: (data) => {
-                    // Update chat ID if this is a new chat
+                    // Update chat ID if this is a new chat (backend created it)
                     if (!chatId && data.chat_id) {
                         setChatId(data.chat_id);
+                        // Update URL to include the chat_id from backend
                         window.history.replaceState(null, '', `/chat/${data.chat_id}`);
                     }
 

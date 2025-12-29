@@ -10,16 +10,19 @@ interface AuthGuardProps {
 }
 
 export default function AuthGuard({ children }: AuthGuardProps) {
-    const { user, isLoading } = useAuth();
+    const { user, isLoading, isInitialized } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        if (!isLoading && !user) {
+        // Only redirect if auth state is initialized AND user is not authenticated
+        // This prevents redirecting during page reload while Firebase auth state is being restored
+        if (isInitialized && !isLoading && !user) {
             router.push('/login');
         }
-    }, [user, isLoading, router]);
+    }, [user, isLoading, isInitialized, router]);
 
-    if (isLoading) {
+    // Show loading while Firebase auth state is being restored or backend sync is in progress
+    if (!isInitialized || isLoading) {
         return (
             <div className="flex h-screen items-center justify-center">
                 <LoadingSpinner size="lg" />
@@ -27,8 +30,9 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         );
     }
 
+    // If initialized but no user, redirect will happen in useEffect
     if (!user) {
-        return null; // Will redirect in useEffect
+        return null;
     }
 
     return <>{children}</>;

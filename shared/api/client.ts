@@ -1,26 +1,47 @@
-import axios, { InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from "axios";
 import Cookies from "js-cookie";
+import { AUTH_COOKIE_NAME } from "@/shared/constants/auth";
+import { normalizeError } from "@/shared/utils/errorHandler";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_BASE_URL) {
+    console.warn('NEXT_PUBLIC_API_URL is not defined');
+}
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
     headers: {
         "Content-Type": "application/json",
     },
+    timeout: 30000, // 30 seconds timeout
 });
 
-// Add a request interceptor to include the auth token
+/**
+ * Request interceptor to attach authentication token
+ */
 apiClient.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
-        const token = Cookies.get("token");
-        if (token) {
+        const token = Cookies.get(AUTH_COOKIE_NAME);
+        if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
         }
         return config;
     },
-    (error: any) => {
+    (error: AxiosError) => {
         return Promise.reject(error);
+    }
+);
+
+/**
+ * Response interceptor for centralized error handling
+ */
+apiClient.interceptors.response.use(
+    (response: AxiosResponse) => response,
+    (error: AxiosError) => {
+        // Normalize error before rejecting
+        const normalizedError = normalizeError(error);
+        return Promise.reject(normalizedError);
     }
 );
 

@@ -6,9 +6,8 @@ export default function NewChatPage() {
     const router = useRouter();
 
     const handleSuggestionClick = (suggestion: string) => {
-        // Just navigate to a new chat - don't send the message yet
-        const newChatId = crypto.randomUUID();
-        router.push(`/chat/${newChatId}`);
+        // Navigate to new chat route - chat will be created by backend on first message
+        router.push('/chat/new');
     };
 
     return (
