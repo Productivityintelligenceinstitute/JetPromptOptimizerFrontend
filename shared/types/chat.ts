@@ -10,6 +10,30 @@ export interface ChatHistoryItem {
     date: string;
 }
 
+export interface Chat {
+    chat_id: string;
+    chat_title: string;
+    user_id: string;
+    created_at: string;
+}
+
+export interface ChatListResponse {
+    chats: Chat[];
+}
+
+export interface ChatMessage {
+    role: string;
+    content: string;
+}
+
+export interface PaginatedChatMessages {
+    items: ChatMessage[];
+    total: number;
+    page: number;
+    size: number;
+    pages: number;
+}
+
 export interface SidebarProps {
     isOpen: boolean;
     toggleSidebar: () => void;

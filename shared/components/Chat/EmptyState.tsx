@@ -48,7 +48,7 @@ export default function EmptyState({ onSuggestionClick }: EmptyStateProps) {
                     <button
                         key={index}
                         onClick={() => onSuggestionClick(suggestion.prompt)}
-                        className="flex flex-col items-start rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:bg-gray-50"
+                        className="flex flex-col items-start rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:bg-gray-50 cursor-pointer"
                     >
                         <span className="mb-1 font-medium text-gray-900">{suggestion.title}</span>
                         <span className="text-sm text-gray-500">{suggestion.subtitle}</span>

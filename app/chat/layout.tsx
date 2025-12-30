@@ -19,19 +19,11 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                 <main
                     className={cn(
                         "flex flex-1 flex-col transition-all duration-300 ease-in-out",
-                        isSidebarOpen ? "ml-64" : "ml-0"
+                        isSidebarOpen ? "ml-64" : "ml-16"
                     )}
                 >
                     {/* Header / Top Bar */}
                     <div className="sticky top-0 z-10 flex items-center justify-between bg-white p-4">
-                        {!isSidebarOpen && (
-                            <button
-                                onClick={toggleSidebar}
-                                className="rounded-md p-2 hover:bg-gray-100"
-                            >
-                                <PanelLeftClose />
-                            </button>
-                        )}
                         <div className="flex-1 text-center font-medium text-gray-500">
                             Jet 1.0
                         </div>

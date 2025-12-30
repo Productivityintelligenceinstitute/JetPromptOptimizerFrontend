@@ -24,6 +24,7 @@ export interface User {
   name?: string;
   token: string;
   role: string;
+  package_name?: string; // Active subscription package name
 }
 
 interface AuthContextType {
@@ -48,6 +49,7 @@ const mapSyncedUserToUser = (syncedUser: SyncedUser, firebaseUid: string): User 
     name: syncedUser.name,
     token: syncedUser.token,
     role: syncedUser.role,
+    package_name: syncedUser.packageName,
   };
 };
 
@@ -182,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               name: firebaseUser.displayName || undefined,
               token,
               role: 'user',
+              package_name: 'free',
             });
           }
         } finally {

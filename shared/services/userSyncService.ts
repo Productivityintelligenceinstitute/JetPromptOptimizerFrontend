@@ -18,6 +18,7 @@ export interface SyncedUser {
     name?: string;
     role: string;
     token: string;
+    packageName?: string;
 }
 
 export interface UserSyncResult {
@@ -76,6 +77,7 @@ const createFallbackUser = (firebaseUser: FirebaseUser, token: string): SyncedUs
         name: firebaseUser.displayName || undefined,
         role: 'user', // Default role
         token,
+        packageName: 'free', // Default package
     };
 };
 
@@ -101,6 +103,7 @@ export const syncUserWithBackend = async (
             name: userData.full_name || undefined,
             role: userData.role,
             token,
+            packageName: userData.package_name,
         };
 
         return {

@@ -20,6 +20,7 @@ export interface UserData {
     role: string;
     firebase_uid: string;
     created_at: string | null;
+    package_name: string;
 }
 
 /**
