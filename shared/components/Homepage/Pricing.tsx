@@ -1,17 +1,19 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CircleIcon } from '@/shared/constants/callouticont';
 import { plans } from '@/shared/constants/Plans';
 import { useAuth } from '@/shared/context/AuthContext';
 import { APP_ROUTES } from '@/config/navigation';
+import { createCheckoutSession, PLAN_TO_PRICE_ID } from '@/shared/api/stripe';
 
 export default function Pricing() {
   const { user } = useAuth();
   const router = useRouter();
+  const [loading, setLoading] = useState<string | null>(null);
 
-  const handlePlanClick = (planName: string) => {
+  const handlePlanClick = async (planName: string) => {
     // Normalize plan name for comparison (handle case differences)
     const normalizedPlanName = planName.toLowerCase();
     const isFreePlan = normalizedPlanName === 'free';
@@ -35,9 +37,41 @@ export default function Pricing() {
       return;
     }
 
-    // For paid plans, handle subscription logic here
-    // This would typically redirect to payment/subscription page
-    console.log(`Subscribe to ${planName}`);
+    // Handle Premium/Enterprise differently (schedule a call)
+    if (planName === 'Premium / Enterprise') {
+      // Redirect to contact/scheduling page or show message
+      alert('Please contact us to set up your Enterprise plan.');
+      return;
+    }
+
+    // For paid plans, create Stripe checkout session
+    const priceId = PLAN_TO_PRICE_ID[planName];
+    if (!priceId) {
+      console.error(`No Stripe Price ID found for plan: ${planName}`);
+      alert('This plan is not available. Please contact support.');
+      return;
+    }
+
+    setLoading(planName);
+
+    try {
+      const { url } = await createCheckoutSession({
+        planName,
+        priceId,
+        successUrl: `${window.location.origin}/chat?success=true`,
+        cancelUrl: `${window.location.origin}${APP_ROUTES.home}`,
+      });
+
+      // Redirect to Stripe Checkout
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error: any) {
+      console.error('Error creating checkout session:', error);
+      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to start checkout. Please try again.';
+      alert(errorMessage);
+      setLoading(null);
+    }
   };
 
   const getButtonText = (planName: string): string => {
@@ -157,15 +191,15 @@ export default function Pricing() {
                 <div className="mt-auto">
                   <button
                     onClick={() => handlePlanClick(plan.name)}
-                    disabled={isDisabled}
+                    disabled={isDisabled || loading === plan.name}
                     className={`w-full ${
-                      isDisabled
+                      isDisabled || loading === plan.name
                         ? 'cursor-not-allowed opacity-60'
                         : 'cursor-pointer'
-                    } ${plan.buttonBg} ${plan.buttonText} ${isDisabled ? '' : plan.buttonHover} py-3 px-6 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2`}
+                    } ${plan.buttonBg} ${plan.buttonText} ${isDisabled || loading === plan.name ? '' : plan.buttonHover} py-3 px-6 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2`}
                   >
-                    {buttonText}
-                    {!isDisabled && <span>→</span>}
+                    {loading === plan.name ? 'Loading...' : buttonText}
+                    {!isDisabled && loading !== plan.name && <span>→</span>}
                   </button>
                 </div>
               </div>

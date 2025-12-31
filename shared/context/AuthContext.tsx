@@ -32,6 +32,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isLoading: boolean;
   isInitialized: boolean;
 }
@@ -251,12 +252,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * Refreshes user data from backend
+   * Useful after subscription changes or profile updates
+   */
+  const refreshUser = useCallback(async (): Promise<void> => {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      return;
+    }
+
+    try {
+      await handleUserSync(firebaseUser);
+    } catch (error) {
+      logError(error, 'AuthProvider.refreshUser');
+      // Don't throw - allow app to continue with existing user data
+    }
+  }, [handleUserSync]);
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       login, 
       signup, 
-      logout, 
+      logout,
+      refreshUser,
       isLoading,
       isInitialized,
     }}>
