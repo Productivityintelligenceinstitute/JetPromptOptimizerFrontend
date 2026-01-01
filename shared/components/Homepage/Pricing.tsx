@@ -76,6 +76,11 @@ export default function Pricing() {
     const normalizedPlanName = planName.toLowerCase();
     const isFreePlan = normalizedPlanName === 'free';
     
+    // Premium / Enterprise plan shows "Book a call"
+    if (planName === 'Premium / Enterprise') {
+      return 'Book a call';
+    }
+    
     // If user is authenticated and has free plan, show "Subscribed"
     if (user && isFreePlan && user.package_name?.toLowerCase() === 'free') {
       return 'Subscribed';

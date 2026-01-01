@@ -240,6 +240,16 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                             <span>Pricing</span>
                                         </Link>
 
+                                        {user?.role === 'admin' && (
+                                            <Link
+                                                href="/admin"
+                                                onClick={() => setIsDropdownOpen(false)}
+                                                className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                            >
+                                                <span>Admin Panel</span>
+                                            </Link>
+                                        )}
+
                                         <button
                                             onClick={handleLogout}
                                             className="flex w-full items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
@@ -306,6 +316,16 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                     >
                                         <span>Pricing</span>
                                     </Link>
+
+                                    {user?.role === 'admin' && (
+                                        <Link
+                                            href="/admin"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                        >
+                                            <span>Admin Panel</span>
+                                        </Link>
+                                    )}
 
                                     <button
                                         onClick={handleLogout}

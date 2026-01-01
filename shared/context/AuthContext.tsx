@@ -54,8 +54,36 @@ const mapSyncedUserToUser = (syncedUser: SyncedUser, firebaseUid: string): User 
   };
 };
 
+const USER_STORAGE_KEY = 'jet_user_data';
+
+const loadUserFromStorage = (): User | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(USER_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Failed to load user from localStorage:', error);
+  }
+  return null;
+};
+
+const saveUserToStorage = (user: User | null): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (user) {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(USER_STORAGE_KEY);
+    }
+  } catch (error) {
+    console.error('Failed to save user to localStorage:', error);
+  }
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => loadUserFromStorage());
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   
@@ -89,11 +117,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (syncResult.success && syncResult.user) {
         // Successful sync - use backend user data
-        setUser(mapSyncedUserToUser(syncResult.user, firebaseUser.uid));
+        const mappedUser = mapSyncedUserToUser(syncResult.user, firebaseUser.uid);
+        setUser(mappedUser);
+        saveUserToStorage(mappedUser);
       } else if (syncResult.user) {
         // Fallback user provided (graceful degradation)
         // Backend sync failed but Firebase user exists - keep user logged in with fallback data
-        setUser(mapSyncedUserToUser(syncResult.user, firebaseUser.uid));
+        const mappedUser = mapSyncedUserToUser(syncResult.user, firebaseUser.uid);
+        setUser(mappedUser);
+        saveUserToStorage(mappedUser);
         if (syncResult.error) {
           logError(syncResult.error, 'AuthProvider.handleUserSync');
         }
@@ -105,14 +137,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Create fallback user from Firebase data
         const fallbackToken = await firebaseUser.getIdToken();
         Cookies.set(AUTH_COOKIE_NAME, fallbackToken, { expires: AUTH_COOKIE_EXPIRY_DAYS });
-        setUser({
+        const fallbackUser = {
           id: firebaseUser.uid,
           user_id: firebaseUser.uid,
           email: firebaseUser.email || '',
           name: firebaseUser.displayName || undefined,
           token: fallbackToken,
           role: 'user',
-        });
+        };
+        setUser(fallbackUser);
+        saveUserToStorage(fallbackUser);
       }
     } catch (error) {
       if (!mountedRef.current) {
@@ -121,14 +155,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logError(error, 'AuthProvider.handleUserSync');
       // On error, still set a fallback user to allow app to function
       const token = await firebaseUser.getIdToken();
-      setUser({
+      const fallbackUser = {
         id: firebaseUser.uid,
         user_id: firebaseUser.uid,
         email: firebaseUser.email || '',
         name: firebaseUser.displayName || undefined,
         token,
         role: 'user',
-      });
+      };
+      setUser(fallbackUser);
+      saveUserToStorage(fallbackUser);
     } finally {
       if (syncInProgressRef.current === currentUid) {
         syncInProgressRef.current = null;
@@ -141,6 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const handleLogout = useCallback(() => {
     setUser(null);
+    saveUserToStorage(null);
     Cookies.remove(AUTH_COOKIE_NAME);
     syncInProgressRef.current = null;
   }, []);
@@ -178,7 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Use fallback user data from Firebase
             const token = await firebaseUser.getIdToken();
             Cookies.set(AUTH_COOKIE_NAME, token, { expires: AUTH_COOKIE_EXPIRY_DAYS });
-            setUser({
+            const fallbackUser = {
               id: firebaseUser.uid,
               user_id: firebaseUser.uid,
               email: firebaseUser.email || '',
@@ -186,7 +223,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               token,
               role: 'user',
               package_name: 'free',
-            });
+            };
+            setUser(fallbackUser);
+            saveUserToStorage(fallbackUser);
           }
         } finally {
           if (mountedRef.current) {

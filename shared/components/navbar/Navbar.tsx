@@ -200,6 +200,14 @@ export function Navbar() {
   {user ? (
     <div className="flex items-center gap-4">
       <span className="text-sm text-gray-700">Welcome, {user.name || user.email}</span>
+      {user.role === 'admin' && (
+        <Link
+          href="/admin"
+          className="rounded-[12px] bg-jet-blue px-4 h-[40px] py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90"
+        >
+          Admin Panel
+        </Link>
+      )}
       <button
         onClick={logout}
         className="rounded-[12px] bg-gray-200 px-4 h-[40px] py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-300"
