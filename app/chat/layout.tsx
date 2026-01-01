@@ -3,8 +3,6 @@
 import React, { useState } from 'react';
 import Sidebar from '@/shared/components/Chat/Sidebar';
 import { cn } from '@/shared/lib/cn';
-import { PanelLeftClose } from '@/shared/components/icons';
-import UserDropdown from '@/shared/components/Chat/UserDropdown';
 import AuthGuard from '@/shared/components/auth/AuthGuard';
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
@@ -23,12 +21,9 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                     )}
                 >
                     {/* Header / Top Bar */}
-                    <div className="sticky top-0 z-10 flex items-center justify-between bg-white p-4">
-                        <div className="flex-1 text-center font-medium text-gray-500">
+                    <div className="sticky top-0 z-10 flex items-center justify-center bg-white p-4">
+                        <div className="font-medium text-gray-500">
                             Jet 1.0
-                        </div>
-                        <div className="flex items-center justify-end min-w-[40px]">
-                            <UserDropdown />
                         </div>
                     </div>
 

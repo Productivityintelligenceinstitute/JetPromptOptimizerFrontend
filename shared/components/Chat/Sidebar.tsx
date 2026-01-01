@@ -1,19 +1,22 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/shared/lib/cn';
 import { PanelLeftClose, SquarePen, ChevronDown } from '@/shared/components/icons';
+import { LogOut } from '@/shared/components/icons/user-icons';
 import { SidebarProps, Chat } from '@/shared/types/chat';
 import { useAuth } from '@/shared/context/AuthContext';
 import { getChatList } from '@/shared/api/chat';
 import { groupChatsByDate } from '@/shared/utils/dateUtils';
 import { logError } from '@/shared/utils/errorHandler';
+import { APP_ROUTES } from '@/config/navigation';
 
 export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
-    const { user } = useAuth();
+    const { user, logout } = useAuth();
     const pathname = usePathname();
+    const router = useRouter();
     const [groupedChats, setGroupedChats] = useState<ReturnType<typeof groupChatsByDate>>({
         today: [],
         yesterday: [],
@@ -21,6 +24,13 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         older: [],
     });
     const [isLoading, setIsLoading] = useState(true);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const handleLogout = async () => {
+        await logout();
+        router.push('/login');
+    };
 
     const fetchChats = React.useCallback(async () => {
         if (!user?.user_id) {
@@ -44,13 +54,24 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         fetchChats();
     }, [fetchChats]);
 
-    // Refresh chats when pathname changes (new chat created)
     useEffect(() => {
-        // Only refresh if we're navigating to a valid chat_id (not "new" or empty)
         if (pathname && pathname.startsWith('/chat/') && pathname !== '/chat/new' && pathname !== '/chat') {
             fetchChats();
         }
     }, [pathname, fetchChats]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
 
     const renderChatGroup = (
         chats: Chat[],
@@ -157,28 +178,79 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
 
                     {/* User Profile - hidden when collapsed */}
                     <div className="border-t border-gray-800 p-4">
-                        <button className="flex w-full items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-800">
-                            <div className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs">
-                                    {user?.name
-                                        ? user.name
-                                            .split(' ')
-                                            .map(n => n[0])
-                                            .join('')
-                                            .toUpperCase()
-                                            .slice(0, 2)
-                                        : user?.email?.[0]?.toUpperCase() || 'U'}
-                                </span>
-                            </div>
-                            <div className="text-left min-w-0 flex-1">
-                                <p className="text-sm font-medium truncate">
-                                    {user?.name || user?.email || 'User'}
-                                </p>
-                                <p className="text-xs text-gray-400 capitalize">
-                                    {user?.package_name || 'Free'} Plan
-                                </p>
-                            </div>
-                        </button>
+                        <div className="relative" ref={dropdownRef}>
+                            <button 
+                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                className="flex w-full items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-800"
+                            >
+                                <div className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0">
+                                    <span className="text-xs">
+                                        {user?.name
+                                            ? user.name
+                                                .split(' ')
+                                                .map(n => n[0])
+                                                .join('')
+                                                .toUpperCase()
+                                                .slice(0, 2)
+                                            : user?.email?.[0]?.toUpperCase() || 'U'}
+                                    </span>
+                                </div>
+                                <div className="text-left min-w-0 flex-1">
+                                    <p className="text-sm font-medium truncate">
+                                        {user?.name || user?.email || 'User'}
+                                    </p>
+                                    <p className="text-xs text-gray-400 capitalize">
+                                        {user?.package_name || 'Free'} Plan
+                                    </p>
+                                </div>
+                                <ChevronDown className={cn(
+                                    "h-4 w-4 text-gray-400 transition-transform",
+                                    isDropdownOpen && "rotate-180"
+                                )} />
+                            </button>
+
+                            {isDropdownOpen && (
+                                <div className="absolute bottom-full left-0 mb-2 w-full rounded-md bg-gray-800 border border-gray-700 shadow-lg z-50 overflow-hidden">
+                                    <div className="px-4 py-4 border-b border-gray-700">
+                                        <p className="text-sm font-medium text-white truncate mb-1">
+                                            {user?.name || user?.email || 'User'}
+                                        </p>
+                                        <p className="text-xs text-gray-400 truncate mb-2">
+                                            {user?.email}
+                                        </p>
+                                        <p className="text-xs text-gray-400 capitalize">
+                                            {user?.package_name || 'Free'} Plan
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="py-1">
+                                        <Link
+                                            href={APP_ROUTES.home}
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                        >
+                                            <span>Home</span>
+                                        </Link>
+
+                                        <Link
+                                            href={APP_ROUTES.pricing}
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                        >
+                                            <span>Pricing</span>
+                                        </Link>
+
+                                        <button
+                                            onClick={handleLogout}
+                                            className="flex w-full items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                        >
+                                            <LogOut className="h-4 w-4" />
+                                            <span>Sign out</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </>
             )}
@@ -186,21 +258,66 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             {/* Collapsed state - show minimal user info */}
             {!isOpen && (
                 <div className="flex-1 flex flex-col items-center justify-end pb-4">
-                    <button 
-                        className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600 transition-colors"
-                        title={user?.name || user?.email || 'User Profile'}
-                    >
-                        <span className="text-xs">
-                            {user?.name
-                                ? user.name
-                                    .split(' ')
-                                    .map(n => n[0])
-                                    .join('')
-                                    .toUpperCase()
-                                    .slice(0, 2)
-                                : user?.email?.[0]?.toUpperCase() || 'U'}
-                        </span>
-                    </button>
+                    <div className="relative" ref={dropdownRef}>
+                        <button 
+                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                            className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600 transition-colors"
+                            title={user?.name || user?.email || 'User Profile'}
+                        >
+                            <span className="text-xs">
+                                {user?.name
+                                    ? user.name
+                                        .split(' ')
+                                        .map(n => n[0])
+                                        .join('')
+                                        .toUpperCase()
+                                        .slice(0, 2)
+                                    : user?.email?.[0]?.toUpperCase() || 'U'}
+                            </span>
+                        </button>
+
+                        {isDropdownOpen && (
+                            <div className="absolute bottom-full left-0 mb-2 w-56 rounded-md bg-gray-800 border border-gray-700 shadow-lg z-50 overflow-hidden">
+                                <div className="px-4 py-4 border-b border-gray-700">
+                                    <p className="text-sm font-medium text-white truncate mb-1">
+                                        {user?.name || user?.email || 'User'}
+                                    </p>
+                                    <p className="text-xs text-gray-400 truncate mb-2">
+                                        {user?.email}
+                                    </p>
+                                    <p className="text-xs text-gray-400 capitalize">
+                                        {user?.package_name || 'Free'} Plan
+                                    </p>
+                                </div>
+                                
+                                <div className="py-1">
+                                    <Link
+                                        href={APP_ROUTES.home}
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                    >
+                                        <span>Home</span>
+                                    </Link>
+
+                                    <Link
+                                        href={APP_ROUTES.pricing}
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                    >
+                                        <span>Pricing</span>
+                                    </Link>
+
+                                    <button
+                                        onClick={handleLogout}
+                                        className="flex w-full items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                    >
+                                        <LogOut className="h-4 w-4" />
+                                        <span>Sign out</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
