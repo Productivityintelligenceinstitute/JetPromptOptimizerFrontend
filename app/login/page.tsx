@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/shared/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LogoIcon } from '@/shared/components/icons/user-icons';
 
@@ -16,8 +17,9 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, user, isInitialized } = useAuth();
   const router = useRouter();
+  const [loginSuccess, setLoginSuccess] = useState(false);
   const {
     register,
     handleSubmit,
@@ -27,12 +29,22 @@ export default function LoginPage() {
     resolver: zodResolver(loginSchema),
   });
 
+  // Redirect to chat once user is authenticated and synced
+  useEffect(() => {
+    if (loginSuccess && isInitialized && !isLoading && user) {
+      router.push('/chat');
+    }
+  }, [loginSuccess, isInitialized, isLoading, user, router]);
+
   const onSubmit = async (data: LoginForm) => {
     try {
       await login(data.email, data.password);
-      router.push('/chat');
+      // Mark login as successful - wait for user sync to complete
+      setLoginSuccess(true);
+      // The useEffect will handle the redirect once user is available
     } catch (error) {
       setError('root', { message: 'Invalid credentials' });
+      setLoginSuccess(false);
     }
   };
 
@@ -88,10 +100,10 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || loginSuccess}
             className="w-full inline-flex items-center justify-center rounded-md bg-jet-blue px-4 py-2 text-sm font-medium text-soft-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 disabled:opacity-50"
           >
-            {isLoading ? 'Signing in...' : 'Sign In'}
+            {loginSuccess ? 'Signing you in...' : isLoading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 

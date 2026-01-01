@@ -39,7 +39,6 @@ export default function NewChatPage() {
                         });
                     }
                 } catch (error) {
-                    console.error('Error verifying subscription:', error);
                     setNotification({
                         message: 'Payment was successful, but we couldn\'t verify your subscription status. Please refresh the page or contact support if the issue persists.',
                         type: 'error'
@@ -54,9 +53,10 @@ export default function NewChatPage() {
         }
     }, [searchParams, router, refreshUser]);
 
-    const handleSuggestionClick = (suggestion: string) => {
-        // Navigate to new chat route - chat will be created by backend on first message
-        router.push('/chat/new');
+    const handleSuggestionClick = (suggestion: string, level?: string) => {
+        // Navigate to new chat route with level parameter - chat will be created by backend on first message
+        const url = level ? `/chat/new?level=${level}` : '/chat/new';
+        router.push(url);
     };
 
     return (

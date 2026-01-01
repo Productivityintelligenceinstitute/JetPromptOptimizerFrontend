@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/shared/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { LogoIcon } from '@/shared/components/icons/user-icons';
@@ -21,8 +22,9 @@ const signupSchema = z.object({
 type SignupForm = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
-  const { signup, isLoading } = useAuth();
+  const { signup, isLoading, user, isInitialized } = useAuth();
   const router = useRouter();
+  const [signupSuccess, setSignupSuccess] = useState(false);
   const {
     register,
     handleSubmit,
@@ -32,12 +34,22 @@ export default function SignupPage() {
     resolver: zodResolver(signupSchema),
   });
 
+  // Redirect to chat once user is authenticated and synced
+  useEffect(() => {
+    if (signupSuccess && isInitialized && !isLoading && user) {
+      router.push('/chat');
+    }
+  }, [signupSuccess, isInitialized, isLoading, user, router]);
+
   const onSubmit = async (data: SignupForm) => {
     try {
       await signup(data.email, data.password, data.name);
-      router.push('/chat'); // Redirect to home after signup
+      // Mark signup as successful - wait for user sync to complete
+      setSignupSuccess(true);
+      // The useEffect will handle the redirect once user is available
     } catch (error) {
       setError('root', { message: 'Signup failed. Please try again.' });
+      setSignupSuccess(false);
     }
   };
 
@@ -121,10 +133,10 @@ export default function SignupPage() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || signupSuccess}
             className="w-full inline-flex items-center justify-center rounded-md bg-jet-blue px-4 py-2 text-sm font-medium text-soft-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 disabled:opacity-50"
           >
-            {isLoading ? 'Creating account...' : 'Create Account'}
+            {signupSuccess ? 'Signing you in...' : isLoading ? 'Creating account...' : 'Create Account'}
           </button>
         </form><div className="text-center">
           <p className="text-sm text-gray-700">

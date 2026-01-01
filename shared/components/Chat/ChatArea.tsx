@@ -26,16 +26,41 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaProps>(({ messages, isLoadin
                                 }`}
                         >
                             <div className="prose prose-sm max-w-none">
-                                {message.content.split('\n').map((line, i) => {
-                                    // Simple markdown-like bold text support
+                                {message.content.split('\n').map((line, i, lines) => {
+                                    // Skip empty lines
+                                    if (!line.trim()) {
+                                        return null;
+                                    }
+                                    
+                                    // Check if this is a list item (starts with ✓)
+                                    if (line.trim().startsWith('✓')) {
+                                        return (
+                                            <div key={i} className="mb-1.5 flex items-start gap-2">
+                                                <span className="text-green-600 mt-0.5">✓</span>
+                                                <span className="text-gray-700">{line.trim().substring(1).trim()}</span>
+                                            </div>
+                                        );
+                                    }
+                                    
+                                    // Check if this is a section header (starts with ** and ends with **)
+                                    if (line.trim().startsWith('**') && line.trim().endsWith('**')) {
+                                        const headerText = line.trim().slice(2, -2);
+                                        return (
+                                            <h3 key={i} className="mt-4 mb-2 text-base font-semibold text-gray-900 first:mt-0">
+                                                {headerText}
+                                            </h3>
+                                        );
+                                    }
+                                    
+                                    // Regular paragraph with bold text support
                                     const parts = line.split(/(\*\*.*?\*\*)/g);
                                     return (
-                                        <p key={i} className="mb-2 last:mb-0">
+                                        <p key={i} className="mb-2 text-gray-700 last:mb-0">
                                             {parts.map((part, j) => {
                                                 if (part.startsWith('**') && part.endsWith('**')) {
-                                                    return <strong key={j}>{part.slice(2, -2)}</strong>;
+                                                    return <strong key={j} className="font-semibold text-gray-900">{part.slice(2, -2)}</strong>;
                                                 }
-                                                return part;
+                                                return <span key={j}>{part}</span>;
                                             })}
                                         </p>
                                     );

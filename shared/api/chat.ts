@@ -12,6 +12,36 @@ export const optimizePrompt = async (
     return response.data;
 };
 
+export const optimizeStructuredPrompt = async (
+    data: OptimizationRequest
+): Promise<OptimizationResponse> => {
+    const response = await apiClient.post<OptimizationResponse>(
+        "/structured-level-optimization",
+        data
+    );
+    return response.data;
+};
+
+export const optimizeMasterPrompt = async (
+    data: OptimizationRequest
+): Promise<OptimizationResponse> => {
+    const response = await apiClient.post<OptimizationResponse>(
+        "/master-level-optimization",
+        data
+    );
+    return response.data;
+};
+
+export const optimizeSystemPrompt = async (
+    data: OptimizationRequest
+): Promise<OptimizationResponse> => {
+    const response = await apiClient.post<OptimizationResponse>(
+        "/system-level-optimization",
+        data
+    );
+    return response.data;
+};
+
 export const getChatList = async (userId: string): Promise<ChatListResponse> => {
     const response = await apiClient.get<ChatListResponse>("/chat-list", {
         params: { user_id: userId }

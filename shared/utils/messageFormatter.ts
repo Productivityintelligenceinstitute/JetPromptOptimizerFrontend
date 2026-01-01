@@ -19,30 +19,373 @@ const isEmpty = (value: string): boolean => {
  * Parses assistant message content and formats it nicely
  * Only includes sections that have actual data
  */
+/**
+ * Formats master level response - handles questions and final answers
+ */
+function formatMasterLevelResponse(content: string): string {
+    const finalAnswerMatch = content.match(/Final Answer:\s*(\{[\s\S]*\})/);
+    if (finalAnswerMatch) {
+        try {
+            const jsonStr = finalAnswerMatch[1];
+            const parsed = JSON.parse(jsonStr);
+            
+            if (parsed.questions && Array.isArray(parsed.questions)) {
+                const formattedQuestions = parsed.questions
+                    .map((q: string, index: number) => `${index + 1}. ${q}`)
+                    .join('\n');
+                
+                let formatted = '**Clarification Questions:**\n\n';
+                formatted += formattedQuestions;
+                formatted += '\n\n';
+                
+                if (parsed.note) {
+                    formatted += `*${parsed.note}*`;
+                }
+                
+                return formatted;
+            }
+            
+            if (parsed.summary && parsed.updated_prompt) {
+                let formatted = '';
+                if (parsed.summary) {
+                    formatted += '**Summary:**\n';
+                    formatted += parsed.summary;
+                    formatted += '\n\n';
+                }
+                if (parsed.updated_prompt) {
+                    formatted += '**Updated Prompt:**\n';
+                    formatted += parsed.updated_prompt;
+                    formatted += '\n\n';
+                }
+                if (parsed.request) {
+                    formatted += `*${parsed.request}*`;
+                }
+                return formatted;
+            }
+            
+            if (parsed.master_prompt) {
+                let formatted = '**Master-Level Optimized Prompt:**\n\n';
+                formatted += parsed.master_prompt;
+                if (parsed.evaluation) {
+                    formatted += '\n\n**Evaluation:**\n';
+                    formatted += parsed.evaluation;
+                }
+                if (parsed.note) {
+                    formatted += '\n\n';
+                    formatted += `*${parsed.note}*`;
+                }
+                return formatted;
+            }
+            
+            return `**Response:**\n\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``;
+        } catch (e) {
+            return content;
+        }
+    }
+    
+    return content;
+}
+
 export const formatAssistantMessage = (content: string): string => {
     if (!content || typeof content !== 'string') {
         return content || '';
     }
 
-    // Try to parse structured format (from basic level optimization)
-    // Format: "Optimized Prompt:\n {prompt}\n\n Changes made:\n {changes}\n\n Share message:\n {share}"
-    
+    if (content.includes('Final Answer:')) {
+        return formatMasterLevelResponse(content);
+    }
+
+    const systemPromptHeaders = ['ROLE:', 'OBJECTIVE:', 'CONTEXT:', 'CONSTRAINTS:', 'TASK:', 
+                                 'OUTPUT_FORMAT:', 'QUALITY_RUBRIC:', 'COST_GUARDRAILS:', 'ACCEPTANCE_CRITERIA:'];
+    const hasSystemPromptHeaders = systemPromptHeaders.some(header => content.includes(header));
+
+    try {
+        const parsed = JSON.parse(content);
+        if (typeof parsed === 'object' && parsed !== null) {
+            const sections: string[] = [];
+            
+            if (parsed.system_prompt) {
+                const systemPrompt = parsed.system_prompt;
+                const parsedSections: Record<string, string> = {};
+                
+                const sectionHeaders = [
+                    'ROLE:', 'OBJECTIVE:', 'CONTEXT:', 'CONSTRAINTS:', 'TASK:', 
+                    'OUTPUT_FORMAT:', 'QUALITY_RUBRIC:', 'COST_GUARDRAILS:', 'ACCEPTANCE_CRITERIA:'
+                ];
+                
+                for (let i = 0; i < sectionHeaders.length; i++) {
+                    const header = sectionHeaders[i];
+                    const nextHeader = i < sectionHeaders.length - 1 ? sectionHeaders[i + 1] : null;
+                    
+                    const headerIndex = systemPrompt.indexOf(header);
+                    if (headerIndex !== -1) {
+                        const afterHeader = systemPrompt.substring(headerIndex + header.length).trim();
+                        const nextIndex = nextHeader ? systemPrompt.indexOf(nextHeader, headerIndex + header.length) : -1;
+                        const content = nextIndex !== -1 
+                            ? afterHeader.substring(0, systemPrompt.indexOf(nextHeader, headerIndex + header.length) - (headerIndex + header.length)).trim()
+                            : afterHeader.trim();
+                        
+                        if (content) {
+                            parsedSections[header.replace(':', '')] = content;
+                        }
+                    }
+                }
+                
+                if (Object.keys(parsedSections).length > 0) {
+                    sections.push('**System Prompt:**\n');
+                    
+                    const sectionOrder = ['ROLE', 'OBJECTIVE', 'CONTEXT', 'CONSTRAINTS', 'TASK', 
+                                         'OUTPUT_FORMAT', 'QUALITY_RUBRIC', 'COST_GUARDRAILS', 'ACCEPTANCE_CRITERIA'];
+                    
+                    const formatSectionName = (name: string): string => {
+                        return name
+                            .split('_')
+                            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                            .join(' ');
+                    };
+                    
+                    sectionOrder.forEach(sectionName => {
+                        if (parsedSections[sectionName]) {
+                            const humanReadableName = formatSectionName(sectionName);
+                            sections.push(`**${humanReadableName}:**\n${parsedSections[sectionName]}\n`);
+                        }
+                    });
+                } else {
+                    let formattedPrompt = parsed.system_prompt;
+                    
+                    const headerMap: Record<string, string> = {
+                        'ROLE:': '**Role:**',
+                        'OBJECTIVE:': '**Objective:**',
+                        'CONTEXT:': '**Context:**',
+                        'CONSTRAINTS:': '**Constraints:**',
+                        'TASK:': '**Task:**',
+                        'OUTPUT_FORMAT:': '**Output Format:**',
+                        'QUALITY_RUBRIC:': '**Quality Rubric:**',
+                        'COST_GUARDRAILS:': '**Cost Guardrails:**',
+                        'ACCEPTANCE_CRITERIA:': '**Acceptance Criteria:**'
+                    };
+                    
+                    Object.keys(headerMap).forEach(oldHeader => {
+                        formattedPrompt = formattedPrompt.replace(
+                            new RegExp(`(^|\\n)\\s*${oldHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'gm'),
+                            `$1${headerMap[oldHeader]} `
+                        );
+                        formattedPrompt = formattedPrompt.replace(
+                            new RegExp(oldHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                            headerMap[oldHeader]
+                        );
+                    });
+                    
+                    sections.push(`**System Prompt:**\n${formattedPrompt}`);
+                }
+                
+                if (parsed.key_enhancements) {
+                    let enhancements: string[] = [];
+                    if (Array.isArray(parsed.key_enhancements)) {
+                        enhancements = parsed.key_enhancements;
+                    } else if (typeof parsed.key_enhancements === 'string') {
+                        try {
+                            const parsedEnh = JSON.parse(parsed.key_enhancements);
+                            if (Array.isArray(parsedEnh)) {
+                                enhancements = parsedEnh;
+                            }
+                        } catch (e) {
+                            const trimmed = parsed.key_enhancements.trim();
+                            if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                                const arrayContent = trimmed.slice(1, -1).trim();
+                                if (arrayContent.length > 0) {
+                                    const items: string[] = [];
+                                    let currentItem = '';
+                                    let inQuotes = false;
+                                    let quoteChar = '';
+                                    
+                                    for (let i = 0; i < arrayContent.length; i++) {
+                                        const char = arrayContent[i];
+                                        
+                                        if ((char === '"' || char === "'") && (i === 0 || arrayContent[i - 1] !== '\\')) {
+                                            if (!inQuotes) {
+                                                inQuotes = true;
+                                                quoteChar = char;
+                                            } else if (char === quoteChar) {
+                                                inQuotes = false;
+                                                quoteChar = '';
+                                            }
+                                            currentItem += char;
+                                        } else if (char === ',' && !inQuotes) {
+                                            const trimmedItem = currentItem.trim();
+                                            if (trimmedItem.length > 0) {
+                                                const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
+                                                if (cleaned.length > 0) {
+                                                    enhancements.push(cleaned);
+                                                }
+                                            }
+                                            currentItem = '';
+                                        } else {
+                                            currentItem += char;
+                                        }
+                            }
+                            
+                            if (currentItem.trim().length > 0) {
+                                        const trimmedItem = currentItem.trim();
+                                        const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
+                                        if (cleaned.length > 0) {
+                                            enhancements.push(cleaned);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (enhancements.length > 0) {
+                        sections.push(`**Key Enhancements:**\n${enhancements.map((enhancement: string) => `• ${enhancement}`).join('\n')}`);
+                    }
+                }
+                
+                if (parsed.platform_tip) {
+                    sections.push(`**Platform Tip:**\n${parsed.platform_tip}`);
+                }
+                
+                if (parsed.compliance_statement) {
+                    sections.push(`**Compliance Statement:**\n${parsed.compliance_statement}`);
+                }
+                
+                if (sections.length > 0) {
+                    return sections.join('\n\n');
+                }
+            }
+            
+            if (parsed.optimized_prompt) {
+                sections.push(`**Optimized Prompt:**\n${parsed.optimized_prompt}`);
+            }
+            
+            if (parsed.changes_made && Array.isArray(parsed.changes_made) && parsed.changes_made.length > 0) {
+                sections.push(`**Changes Made:**\n${parsed.changes_made.map((change: string) => `• ${change}`).join('\n')}`);
+            }
+            
+            if (parsed.techniques_applied && Array.isArray(parsed.techniques_applied) && parsed.techniques_applied.length > 0) {
+                sections.push(`**Techniques Applied:**\n${parsed.techniques_applied.map((tech: string) => `• ${tech}`).join('\n')}`);
+            }
+            
+            if (parsed.pro_tip) {
+                sections.push(`**Pro Tip:**\n${parsed.pro_tip}`);
+            }
+            
+            if (parsed.share_message) {
+                sections.push(parsed.share_message);
+            }
+            
+            if (sections.length > 0) {
+                return sections.join('\n\n');
+            }
+        }
+    } catch (e) {
+        if (hasSystemPromptHeaders && !content.trim().startsWith('{')) {
+            let formattedContent = content;
+            const headerMap: Record<string, string> = {
+                'ROLE:': '**Role:**',
+                'OBJECTIVE:': '**Objective:**',
+                'CONTEXT:': '**Context:**',
+                'CONSTRAINTS:': '**Constraints:**',
+                'TASK:': '**Task:**',
+                'OUTPUT_FORMAT:': '**Output Format:**',
+                'QUALITY_RUBRIC:': '**Quality Rubric:**',
+                'COST_GUARDRAILS:': '**Cost Guardrails:**',
+                'ACCEPTANCE_CRITERIA:': '**Acceptance Criteria:**'
+            };
+            
+            Object.keys(headerMap).forEach(oldHeader => {
+                formattedContent = formattedContent.replace(
+                    new RegExp(`(^|\\n)\\s*${oldHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'gm'),
+                    `$1${headerMap[oldHeader]} `
+                );
+                formattedContent = formattedContent.replace(
+                    new RegExp(oldHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                    headerMap[oldHeader]
+                );
+            });
+            
+            const keyEnhancementsMatch = formattedContent.match(/Key Enhancements:\s*(\[[^\]]+\])/i);
+            if (keyEnhancementsMatch) {
+                const arrayString = keyEnhancementsMatch[1];
+                let enhancements: string[] = [];
+                
+                try {
+                    const parsed = JSON.parse(arrayString);
+                    if (Array.isArray(parsed)) {
+                        enhancements = parsed;
+                    }
+                } catch (e) {
+                    const trimmed = arrayString.trim();
+                    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                        const arrayContent = trimmed.slice(1, -1).trim();
+                        if (arrayContent.length > 0) {
+                            const items: string[] = [];
+                            let currentItem = '';
+                            let inQuotes = false;
+                            let quoteChar = '';
+                            
+                            for (let i = 0; i < arrayContent.length; i++) {
+                                const char = arrayContent[i];
+                                
+                                if ((char === '"' || char === "'") && (i === 0 || arrayContent[i - 1] !== '\\')) {
+                                    if (!inQuotes) {
+                                        inQuotes = true;
+                                        quoteChar = char;
+                                    } else if (char === quoteChar) {
+                                        inQuotes = false;
+                                        quoteChar = '';
+                                    }
+                                    currentItem += char;
+                                } else if (char === ',' && !inQuotes) {
+                                    const trimmedItem = currentItem.trim();
+                                    if (trimmedItem.length > 0) {
+                                        const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
+                                        if (cleaned.length > 0) {
+                                            enhancements.push(cleaned);
+                                        }
+                                    }
+                                    currentItem = '';
+                                } else {
+                                    currentItem += char;
+                                }
+                            }
+                            
+                            if (currentItem.trim().length > 0) {
+                                const trimmedItem = currentItem.trim();
+                                const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
+                                if (cleaned.length > 0) {
+                                    enhancements.push(cleaned);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (enhancements.length > 0) {
+                    const formattedEnhancements = enhancements.map((enhancement: string) => `• ${enhancement}`).join('\n');
+                    formattedContent = formattedContent.replace(
+                        /Key Enhancements:\s*\[[^\]]+\]/i,
+                        `**Key Enhancements:**\n${formattedEnhancements}`
+                    );
+                }
+            }
+            
+            return formattedContent;
+        }
+    }
+
     const sections: string[] = [];
     
-    // Split content by section headers to handle empty sections
-    // Extract Optimized Prompt
     const optimizedPromptIndex = content.indexOf('Optimized Prompt:');
     if (optimizedPromptIndex !== -1) {
         const afterOptimized = content.substring(optimizedPromptIndex + 'Optimized Prompt:'.length);
         const changesIndex = afterOptimized.indexOf('Changes made:');
+        const techniquesIndex = afterOptimized.indexOf('Techniques Applied:');
+        const proTipIndex = afterOptimized.indexOf('Pro Tip:');
         const shareIndex = afterOptimized.indexOf('Share message:');
         
-        let promptEnd = afterOptimized.length;
-        if (changesIndex !== -1 && (shareIndex === -1 || changesIndex < shareIndex)) {
-            promptEnd = changesIndex;
-        } else if (shareIndex !== -1) {
-            promptEnd = shareIndex;
-        }
+        const nextSectionIndices = [changesIndex, techniquesIndex, proTipIndex, shareIndex].filter(idx => idx !== -1);
+        const promptEnd = nextSectionIndices.length > 0 ? Math.min(...nextSectionIndices) : afterOptimized.length;
         
         const prompt = afterOptimized.substring(0, promptEnd).trim();
         if (!isEmpty(prompt)) {
@@ -50,26 +393,25 @@ export const formatAssistantMessage = (content: string): string => {
         }
     }
     
-    // Extract Changes made
     const changesIndex = content.indexOf('Changes made:');
     if (changesIndex !== -1) {
         const afterChanges = content.substring(changesIndex + 'Changes made:'.length);
+        const techniquesIndex = afterChanges.indexOf('Techniques Applied:');
+        const proTipIndex = afterChanges.indexOf('Pro Tip:');
         const shareIndex = afterChanges.indexOf('Share message:');
         
-        const changesEnd = shareIndex !== -1 ? shareIndex : afterChanges.length;
+        const nextSectionIndices = [techniquesIndex, proTipIndex, shareIndex].filter(idx => idx !== -1);
+        const changesEnd = nextSectionIndices.length > 0 ? Math.min(...nextSectionIndices) : afterChanges.length;
+        
         const changes = afterChanges.substring(0, changesEnd).trim();
         
         if (!isEmpty(changes)) {
-            // Try to parse as array or keep as is
             let formattedChanges = changes;
             
-            // Check if it looks like an array (starts with [ and ends with ])
             if (changes.trim().startsWith('[') && changes.trim().endsWith(']')) {
-                // Extract array content - handle Python-style arrays with single quotes
                 const arrayContent = changes.trim().slice(1, -1).trim();
                 
                 if (arrayContent.length > 0) {
-                    // Split by comma, but be careful with commas inside quotes
                     const items: string[] = [];
                     let currentItem = '';
                     let inQuotes = false;
@@ -101,10 +443,9 @@ export const formatAssistantMessage = (content: string): string => {
                         } else {
                             currentItem += char;
                         }
-                    }
-                    
-                    // Add last item
-                    if (currentItem.trim().length > 0) {
+                            }
+                            
+                            if (currentItem.trim().length > 0) {
                         const trimmed = currentItem.trim();
                         const cleaned = trimmed.replace(/^['"]|['"]$/g, '').trim();
                         if (cleaned.length > 0) {
@@ -124,7 +465,89 @@ export const formatAssistantMessage = (content: string): string => {
         }
     }
     
-    // Extract Share message
+    const techniquesIndex = content.indexOf('Techniques Applied:');
+    if (techniquesIndex !== -1) {
+        const afterTechniques = content.substring(techniquesIndex + 'Techniques Applied:'.length);
+        const proTipIndex = afterTechniques.indexOf('Pro Tip:');
+        const shareIndex = afterTechniques.indexOf('Share message:');
+        
+        // Find the earliest next section
+        const nextSectionIndices = [proTipIndex, shareIndex].filter(idx => idx !== -1);
+        const techniquesEnd = nextSectionIndices.length > 0 ? Math.min(...nextSectionIndices) : afterTechniques.length;
+        
+        const techniques = afterTechniques.substring(0, techniquesEnd).trim();
+        
+        if (!isEmpty(techniques)) {
+            let formattedTechniques = techniques;
+            
+            if (techniques.trim().startsWith('[') && techniques.trim().endsWith(']')) {
+                const arrayContent = techniques.trim().slice(1, -1).trim();
+                
+                if (arrayContent.length > 0) {
+                    const items: string[] = [];
+                    let currentItem = '';
+                    let inQuotes = false;
+                    let quoteChar = '';
+                    
+                    for (let i = 0; i < arrayContent.length; i++) {
+                        const char = arrayContent[i];
+                        
+                        if ((char === '"' || char === "'") && (i === 0 || arrayContent[i - 1] !== '\\')) {
+                            if (!inQuotes) {
+                                inQuotes = true;
+                                quoteChar = char;
+                            } else if (char === quoteChar) {
+                                inQuotes = false;
+                                quoteChar = '';
+                            }
+                            currentItem += char;
+                        } else if (char === ',' && !inQuotes) {
+                            const trimmed = currentItem.trim();
+                            if (trimmed.length > 0) {
+                                const cleaned = trimmed.replace(/^['"]|['"]$/g, '').trim();
+                                if (cleaned.length > 0) {
+                                    items.push(cleaned);
+                                }
+                            }
+                            currentItem = '';
+                        } else {
+                            currentItem += char;
+                        }
+                            }
+                            
+                            if (currentItem.trim().length > 0) {
+                        const trimmed = currentItem.trim();
+                        const cleaned = trimmed.replace(/^['"]|['"]$/g, '').trim();
+                        if (cleaned.length > 0) {
+                            items.push(cleaned);
+                        }
+                    }
+                    
+                    if (items.length > 0) {
+                        formattedTechniques = items.map((tech: string) => `• ${tech}`).join('\n');
+                        sections.push(`**Techniques Applied:**\n${formattedTechniques}`);
+                    }
+                }
+            } else {
+                // If it's not an array format, use as is
+                sections.push(`**Techniques Applied:**\n${formattedTechniques}`);
+            }
+        }
+    }
+    
+    const proTipIndex = content.indexOf('Pro Tip:');
+    if (proTipIndex !== -1) {
+        const afterProTip = content.substring(proTipIndex + 'Pro Tip:'.length);
+        const shareIndex = afterProTip.indexOf('Share message:');
+        
+        const proTipEnd = shareIndex !== -1 ? shareIndex : afterProTip.length;
+        const proTip = afterProTip.substring(0, proTipEnd).trim();
+        
+        if (!isEmpty(proTip)) {
+            sections.push(`**Pro Tip:**\n${proTip}`);
+        }
+    }
+    
     const shareIndex = content.indexOf('Share message:');
     if (shareIndex !== -1) {
         const shareMessage = content.substring(shareIndex + 'Share message:'.length).trim();
@@ -133,9 +556,7 @@ export const formatAssistantMessage = (content: string): string => {
         }
     }
     
-    // If no sections were found, check for other formats (system level, structured level, etc.)
     if (sections.length === 0) {
-        // Try system level format - use [\s\S] instead of . with s flag
         const systemPromptIndex = content.indexOf('System Prompt:');
         if (systemPromptIndex !== -1) {
             const afterSystem = content.substring(systemPromptIndex + 'System Prompt:'.length);
@@ -153,11 +574,63 @@ export const formatAssistantMessage = (content: string): string => {
         if (enhancementsIndex !== -1) {
             const afterEnhancements = content.substring(enhancementsIndex + 'Key Enhancements:'.length);
             const platformIndex = afterEnhancements.indexOf('Platform Tip:');
-            const nextSection = platformIndex !== -1 ? platformIndex : afterEnhancements.indexOf('\n\n');
-            const enhancementsEnd = nextSection !== -1 ? nextSection : afterEnhancements.length;
+            const complianceIndex = afterEnhancements.indexOf('Compliance Statement:');
+            const nextSectionIndices = [platformIndex, complianceIndex].filter(idx => idx !== -1);
+            const enhancementsEnd = nextSectionIndices.length > 0 ? Math.min(...nextSectionIndices) : afterEnhancements.length;
             const enhancements = afterEnhancements.substring(0, enhancementsEnd).trim();
+            
             if (!isEmpty(enhancements)) {
-                sections.push(`**Key Enhancements:**\n${enhancements}`);
+                // Try to parse as array string
+                let formattedEnhancements = enhancements;
+                if (enhancements.trim().startsWith('[') && enhancements.trim().endsWith(']')) {
+                    const arrayContent = enhancements.trim().slice(1, -1).trim();
+                    if (arrayContent.length > 0) {
+                        const items: string[] = [];
+                        let currentItem = '';
+                        let inQuotes = false;
+                        let quoteChar = '';
+                        
+                        for (let i = 0; i < arrayContent.length; i++) {
+                            const char = arrayContent[i];
+                            
+                            if ((char === '"' || char === "'") && (i === 0 || arrayContent[i - 1] !== '\\')) {
+                                if (!inQuotes) {
+                                    inQuotes = true;
+                                    quoteChar = char;
+                                } else if (char === quoteChar) {
+                                    inQuotes = false;
+                                    quoteChar = '';
+                                }
+                                currentItem += char;
+                            } else if (char === ',' && !inQuotes) {
+                                const trimmed = currentItem.trim();
+                                if (trimmed.length > 0) {
+                                    const cleaned = trimmed.replace(/^['"]|['"]$/g, '').trim();
+                                    if (cleaned.length > 0) {
+                                        items.push(cleaned);
+                                    }
+                                }
+                                currentItem = '';
+                            } else {
+                                currentItem += char;
+                            }
+                            }
+                            
+                            if (currentItem.trim().length > 0) {
+                            const trimmed = currentItem.trim();
+                            const cleaned = trimmed.replace(/^['"]|['"]$/g, '').trim();
+                            if (cleaned.length > 0) {
+                                items.push(cleaned);
+                            }
+                        }
+                        
+                        if (items.length > 0) {
+                            formattedEnhancements = items.map((item: string) => `• ${item}`).join('\n');
+                        }
+                    }
+                }
+                
+                sections.push(`**Key Enhancements:**\n${formattedEnhancements}`);
             }
         }
         
@@ -180,34 +653,8 @@ export const formatAssistantMessage = (content: string): string => {
                 sections.push(`**Compliance Statement:**\n${compliance}`);
             }
         }
-        
-        // Try structured level format
-        const techniquesIndex = content.indexOf('Techniques Applied:');
-        if (techniquesIndex !== -1) {
-            const afterTechniques = content.substring(techniquesIndex + 'Techniques Applied:'.length);
-            const proTipIndex = afterTechniques.indexOf('Pro Tip:');
-            const nextSection = proTipIndex !== -1 ? proTipIndex : afterTechniques.indexOf('\n\n');
-            const techniquesEnd = nextSection !== -1 ? nextSection : afterTechniques.length;
-            const techniques = afterTechniques.substring(0, techniquesEnd).trim();
-            if (!isEmpty(techniques)) {
-                sections.push(`**Techniques Applied:**\n${techniques}`);
-            }
-        }
-        
-        const proTipIndex = content.indexOf('Pro Tip:');
-        if (proTipIndex !== -1) {
-            const afterProTip = content.substring(proTipIndex + 'Pro Tip:'.length);
-            const shareIndex = afterProTip.indexOf('Share message:');
-            const nextSection = shareIndex !== -1 ? shareIndex : afterProTip.indexOf('\n\n');
-            const proTipEnd = nextSection !== -1 ? nextSection : afterProTip.length;
-            const proTip = afterProTip.substring(0, proTipEnd).trim();
-            if (!isEmpty(proTip)) {
-                sections.push(`**Pro Tip:**\n${proTip}`);
-            }
-        }
     }
     
-    // If still no sections found, return original content (might be plain text or different format)
     if (sections.length === 0) {
         return content.trim();
     }

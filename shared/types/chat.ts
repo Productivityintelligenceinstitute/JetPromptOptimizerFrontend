@@ -40,7 +40,7 @@ export interface SidebarProps {
 }
 
 export interface EmptyStateProps {
-    onSuggestionClick: (suggestion: string) => void;
+    onSuggestionClick: (suggestion: string, level?: string) => void;
 }
 
 export interface ChatAreaProps {

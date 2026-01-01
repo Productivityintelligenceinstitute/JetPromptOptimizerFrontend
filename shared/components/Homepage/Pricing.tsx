@@ -45,12 +45,11 @@ export default function Pricing() {
     }
 
     // For paid plans, create Stripe checkout session
-    const priceId = PLAN_TO_PRICE_ID[planName];
-    if (!priceId) {
-      console.error(`No Stripe Price ID found for plan: ${planName}`);
-      alert('This plan is not available. Please contact support.');
-      return;
-    }
+        const priceId = PLAN_TO_PRICE_ID[planName];
+        if (!priceId) {
+          alert('This plan is not available. Please contact support.');
+          return;
+        }
 
     setLoading(planName);
 
@@ -63,15 +62,14 @@ export default function Pricing() {
       });
 
       // Redirect to Stripe Checkout
-      if (url) {
-        window.location.href = url;
-      }
-    } catch (error: any) {
-      console.error('Error creating checkout session:', error);
-      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to start checkout. Please try again.';
-      alert(errorMessage);
-      setLoading(null);
-    }
+          if (url) {
+            window.location.href = url;
+          }
+        } catch (error: any) {
+          const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to start checkout. Please try again.';
+          alert(errorMessage);
+          setLoading(null);
+        }
   };
 
   const getButtonText = (planName: string): string => {
