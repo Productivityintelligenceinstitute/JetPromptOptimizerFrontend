@@ -1,37 +1,45 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/shared/context/AuthContext';
 import { getLibraryPrompts, SharedPrompt } from '@/shared/api/library';
 import AuthGuard from '@/shared/components/auth/AuthGuard';
 import Pagination from '@/shared/components/admin/Pagination';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { formatAssistantMessage } from '@/shared/utils/messageFormatter';
 
 export default function LibraryPage() {
     const { user } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [prompts, setPrompts] = useState<SharedPrompt[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
+    const initialPage = Number(searchParams.get('page') || '1') || 1;
+    const initialSize = Number(searchParams.get('size') || '10') || 10;
+    const [currentPage, setCurrentPage] = useState(initialPage);
+    const [itemsPerPage, setItemsPerPage] = useState(initialSize);
     const [copiedPromptId, setCopiedPromptId] = useState<number | null>(null);
+    const [totalItems, setTotalItems] = useState(0);
+    const initialSearch = searchParams.get('q') || '';
+    const [search, setSearch] = useState(initialSearch);
+    const [searchInput, setSearchInput] = useState(initialSearch);
 
     useEffect(() => {
         if (user) {
-            fetchPrompts();
+            fetchPrompts(currentPage, itemsPerPage, search);
         }
-    }, [user]);
+    }, [user, currentPage, itemsPerPage, search]);
 
-    const fetchPrompts = async () => {
+    const fetchPrompts = async (page: number, size: number, query: string) => {
         if (!user) return;
 
         try {
             setIsLoading(true);
             setError(null);
-            const data = await getLibraryPrompts(user.user_id);
-            setPrompts(data);
+            const data = await getLibraryPrompts(user.user_id, page, size, query);
+            setPrompts(data.items);
+            setTotalItems(data.total);
         } catch (err: any) {
             setError(err.message || 'Failed to load prompts from library');
         } finally {
@@ -51,18 +59,52 @@ export default function LibraryPage() {
         }
     };
 
-    const paginatedPrompts = prompts.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
+    // If navigated with ?message_id=..., move that prompt to the top
+    const highlightedMessageId = searchParams.get('message_id');
+
+    const sortedPrompts = useMemo(() => {
+        if (!highlightedMessageId) return prompts;
+        const idx = prompts.findIndex((p) => p.message_id === highlightedMessageId);
+        if (idx === -1) return prompts;
+        const clone = [...prompts];
+        const [item] = clone.splice(idx, 1);
+        return [item, ...clone];
+    }, [prompts, highlightedMessageId]);
+
+    // Already paginated on backend; just use sorted order within the current page
+    const paginatedPrompts = sortedPrompts;
 
     const handlePageChange = (page: number) => {
         setCurrentPage(page);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('page', String(page));
+        params.set('size', String(itemsPerPage));
+        if (search) params.set('q', search);
+        else params.delete('q');
+        router.push(`/library?${params.toString()}`);
     };
 
     const handleItemsPerPageChange = (newItemsPerPage: number) => {
         setItemsPerPage(newItemsPerPage);
         setCurrentPage(1);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('page', '1');
+        params.set('size', String(newItemsPerPage));
+        if (search) params.set('q', search);
+        else params.delete('q');
+        router.push(`/library?${params.toString()}`);
+    };
+
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setCurrentPage(1);
+        setSearch(searchInput.trim());
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('page', '1');
+        params.set('size', String(itemsPerPage));
+        if (searchInput.trim()) params.set('q', searchInput.trim());
+        else params.delete('q');
+        router.push(`/library?${params.toString()}`);
     };
 
     return (
@@ -79,12 +121,29 @@ export default function LibraryPage() {
                                     Discover and use prompts shared by the community
                                 </p>
                             </div>
-                            <button
-                                onClick={() => router.push('/chat')}
-                                className="px-4 py-2 bg-jet-blue text-white rounded-lg hover:bg-jet-blue/90 transition-colors cursor-pointer"
-                            >
-                                Create New Prompt
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={searchInput}
+                                        onChange={(e) => setSearchInput(e.target.value)}
+                                        placeholder="Search prompts..."
+                                        className="w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-jet-blue focus:border-jet-blue"
+                                    />
+                                    <button
+                                        type="submit"
+                                        className="px-3 py-1.5 text-sm rounded-md bg-jet-blue text-white hover:bg-jet-blue/90"
+                                    >
+                                        Search
+                                    </button>
+                                </form>
+                                <button
+                                    onClick={() => router.push('/chat')}
+                                    className="px-4 py-2 bg-jet-blue text-white rounded-lg hover:bg-jet-blue/90 transition-colors cursor-pointer"
+                                >
+                                    Create New Prompt
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -112,10 +171,17 @@ export default function LibraryPage() {
                                 {paginatedPrompts.map((prompt, index) => {
                                     const globalIndex = (currentPage - 1) * itemsPerPage + index;
                                     const formattedContent = formatAssistantMessage(prompt.content);
+                                    const isHighlighted =
+                                        highlightedMessageId &&
+                                        prompt.message_id === highlightedMessageId;
                                     return (
                                         <div
                                             key={globalIndex}
-                                            className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                                            className={`bg-white rounded-xl border p-6 hover:shadow-md transition-shadow ${
+                                                isHighlighted
+                                                    ? 'border-jet-blue ring-2 ring-jet-blue/20'
+                                                    : 'border-gray-200'
+                                            }`}
                                         >
                                             <div className="flex items-start justify-between mb-4">
                                                 <div className="flex-1">
@@ -230,7 +296,7 @@ export default function LibraryPage() {
                             </div>
 
                             <Pagination
-                                totalItems={prompts.length}
+                                totalItems={totalItems}
                                 itemsPerPage={itemsPerPage}
                                 currentPage={currentPage}
                                 onPageChange={handlePageChange}

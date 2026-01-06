@@ -27,6 +27,12 @@ export default function AdminPage() {
             description: "View users, update roles, and see who has access to what.",
             badge: "User Management",
         },
+        {
+            href: "/admin/library",
+            title: "Manage Prompt Library",
+            description: "Review and manage prompts shared by users.",
+            badge: "Prompt Library",
+        },
     ];
 
     return (

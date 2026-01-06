@@ -333,8 +333,9 @@ export default function ChatSessionPage() {
         if (!user) return;
         const loadShared = async () => {
             try {
-                const myLibrary = await getMyLibrary(user.user_id);
-                setSharedMessageIds(new Set(myLibrary.map((item) => item.message_id)));
+                // fetch a generous page size to cover typical usage
+                const myLibrary = await getMyLibrary(user.user_id, 1, 500);
+                setSharedMessageIds(new Set(myLibrary.items.map((item) => item.message_id)));
             } catch (error) {
                 // Don't block chat if library fetch fails
                 logError(error, 'ChatSessionPage.loadSharedLibrary');
@@ -624,7 +625,9 @@ export default function ChatSessionPage() {
                 isLoading={isPending || isLoadingMessages} 
                 ref={chatAreaRef}
                 onShare={handleShareClick}
-                onGoToLibrary={() => router.push('/library')}
+                onGoToLibrary={(messageId: string) =>
+                    router.push(`/library?message_id=${encodeURIComponent(messageId)}`)
+                }
             />
             <ChatInput onSendMessage={handleSendMessage} isLoading={isPending} />
         </div>

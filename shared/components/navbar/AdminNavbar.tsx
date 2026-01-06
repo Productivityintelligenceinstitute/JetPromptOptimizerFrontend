@@ -30,6 +30,7 @@ export function AdminNavbar() {
     { href: "/admin/kb", label: "KB Ingestion" },
     { href: "/admin/packages", label: "Packages" },
     { href: "/admin/users", label: "Users" },
+    { href: "/admin/library", label: "Library" },
   ];
 
   return (

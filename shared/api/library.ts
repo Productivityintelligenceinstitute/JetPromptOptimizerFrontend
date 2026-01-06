@@ -3,8 +3,31 @@ import { normalizeError, logError } from "@/shared/utils/errorHandler";
 
 export interface SharedPrompt {
     email: string;
+    message_id: string;
     content: string;
     created_at?: string;
+}
+
+export interface PaginatedSharedPrompts {
+    items: SharedPrompt[];
+    total: number;
+    page: number;
+    size: number;
+    pages: number;
+}
+
+export interface MyLibraryResponseItem {
+    message_id: string;
+    content: string;
+    added_at: string;
+}
+
+export interface MyLibraryResponse {
+    items: MyLibraryResponseItem[];
+    total: number;
+    page: number;
+    size: number;
+    pages: number;
 }
 
 /**
@@ -31,10 +54,15 @@ export const addToLibrary = async (userId: string, messageId: string): Promise<v
 /**
  * Get all shared prompts from the library
  */
-export const getLibraryPrompts = async (userId: string): Promise<SharedPrompt[]> => {
+export const getLibraryPrompts = async (
+    userId: string,
+    page: number,
+    size: number,
+    query?: string
+): Promise<PaginatedSharedPrompts> => {
     try {
-        const response = await apiClient.get<SharedPrompt[]>("/library", {
-            params: { user_id: userId },
+        const response = await apiClient.get<PaginatedSharedPrompts>("/library", {
+            params: { user_id: userId, page, size, q: query || undefined },
         });
         return response.data;
     } catch (error) {
@@ -52,18 +80,15 @@ export const getLibraryPrompts = async (userId: string): Promise<SharedPrompt[]>
 /**
  * Get user's own library
  */
-export const getMyLibrary = async (userId: string): Promise<Array<{
-    message_id: string;
-    content: string;
-    added_at: string;
-}>> => {
+export const getMyLibrary = async (
+    userId: string,
+    page: number = 1,
+    size: number = 100,
+    query?: string
+): Promise<MyLibraryResponse> => {
     try {
-        const response = await apiClient.get<Array<{
-            message_id: string;
-            content: string;
-            added_at: string;
-        }>>("/library/me", {
-            params: { user_id: userId },
+        const response = await apiClient.get<MyLibraryResponse>("/library/me", {
+            params: { user_id: userId, page, size, q: query || undefined },
         });
         return response.data;
     } catch (error) {
@@ -76,9 +101,11 @@ export const getMyLibrary = async (userId: string): Promise<Array<{
 /**
  * Remove a message from library
  */
-export const removeFromLibrary = async (messageId: string): Promise<void> => {
+export const removeFromLibrary = async (userId: string, messageId: string): Promise<void> => {
     try {
-        await apiClient.delete<{ detail: string }>(`/library/remove/${messageId}`);
+        await apiClient.delete<{ detail: string }>(`/library/remove/${messageId}`, {
+            params: { user_id: userId },
+        });
     } catch (error) {
         const normalizedError = normalizeError(error);
         logError(normalizedError, "removeFromLibrary");

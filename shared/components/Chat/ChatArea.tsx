@@ -87,7 +87,7 @@ const extractOptimizedPrompt = (content: string): string => {
 
 interface ChatAreaWithShareProps extends ChatAreaProps {
     onShare?: (promptContent: string, messageId: string) => void;
-    onGoToLibrary?: () => void;
+    onGoToLibrary?: (messageId: string) => void;
 }
 
 const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
@@ -181,7 +181,10 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                 <div className="absolute top-2 right-2 flex items-center gap-1">
                                     {message.isShared ? (
                                         <button
-                                            onClick={onGoToLibrary}
+                                            onClick={() =>
+                                                onGoToLibrary &&
+                                                onGoToLibrary(message.messageId || message.id)
+                                            }
                                             className="p-1.5 rounded-md hover:bg-gray-100 text-jet-blue hover:text-jet-blue transition-colors"
                                             title="View in library"
                                             aria-label="View in library"

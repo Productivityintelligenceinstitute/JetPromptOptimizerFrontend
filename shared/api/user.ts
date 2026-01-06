@@ -23,6 +23,23 @@ export interface UserData {
     package_name: string;
 }
 
+export interface AdminUserListItem {
+    user_id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    firebase_uid: string | null;
+    created_at: string | null;
+}
+
+export interface AdminUserListResponse {
+    items: AdminUserListItem[];
+    total: number;
+    page: number;
+    size: number;
+    pages: number;
+}
+
 /**
  * Creates or updates user account in backend
  * Idempotent operation - safe to call multiple times
@@ -70,6 +87,55 @@ export const getCurrentUser = async (): Promise<UserData> => {
     } catch (error) {
         const normalizedError = normalizeError(error);
         logError(normalizedError, 'getCurrentUser');
+        throw normalizedError;
+    }
+};
+
+export const updateUserRole = async (email: string, newRole: string): Promise<void> => {
+    try {
+        await withRetry(
+            () =>
+                apiClient.put("/update-role", {
+                    email,
+                    new_role: newRole,
+                }),
+            {
+                shouldRetry: isRetryableError,
+            }
+        );
+    } catch (error) {
+        const normalizedError = normalizeError(error);
+        logError(normalizedError, "updateUserRole");
+        throw normalizedError;
+    }
+};
+
+export const getAdminUsers = async (
+    adminUserId: string,
+    page: number,
+    size: number,
+    query?: string
+): Promise<AdminUserListResponse> => {
+    try {
+        const response = await withRetry(
+            () =>
+                apiClient.get<AdminUserListResponse>("/admin/users", {
+                    params: {
+                        user_id: adminUserId,
+                        page,
+                        size,
+                        q: query || undefined,
+                    },
+                }),
+            {
+                shouldRetry: isRetryableError,
+            }
+        );
+
+        return response.data;
+    } catch (error) {
+        const normalizedError = normalizeError(error);
+        logError(normalizedError, "getAdminUsers");
         throw normalizedError;
     }
 };
