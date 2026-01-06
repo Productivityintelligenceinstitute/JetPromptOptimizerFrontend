@@ -328,6 +328,14 @@ export default function ChatSessionPage() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [sharedMessageIds, setSharedMessageIds] = useState<Set<string>>(new Set());
     
+    // Redirect free users away from structured level chat
+    useEffect(() => {
+        if (!optimizationLevel || !user) return;
+        if (isStructuredLevel && user.package_name === 'free') {
+            router.replace('/chat');
+        }
+    }, [optimizationLevel, isStructuredLevel, user?.package_name, user, router]);
+
     // Load user's shared message ids once
     useEffect(() => {
         if (!user) return;
