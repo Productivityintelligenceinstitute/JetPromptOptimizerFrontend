@@ -8,13 +8,19 @@ import { Message } from '@/shared/types/chat';
 import { useOptimizePrompt, useOptimizeStructuredPrompt, useOptimizeMasterPrompt, useOptimizeSystemPrompt } from '@/shared/hooks/useChat';
 import { useAuth } from '@/shared/context/AuthContext';
 import { getChatMessages } from '@/shared/api/chat';
+import { getMyLibrary } from '@/shared/api/library';
 import { logError } from '@/shared/utils/errorHandler';
-import { formatMessage } from '@/shared/utils/messageFormatter';
+import { formatMessage, formatAssistantMessage } from '@/shared/utils/messageFormatter';
 import { ApiError } from '@/shared/types/errors';
 import UpgradeRequiredModal from '@/shared/components/Modal/UpgradeRequiredModal';
 import DailyLimitExceededModal from '@/shared/components/Modal/DailyLimitExceededModal';
+import SharePromptModal from '@/shared/components/Modal/SharePromptModal';
+import DeleteChatModal from '@/shared/components/Modal/DeleteChatModal';
 import { detectOptimizationLevel, getLevelDisplayName, OPTIMIZATION_LEVELS, OptimizationLevel } from '@/shared/utils/optimizationLevel';
 import { generateOptimizationLevelMessage } from '@/shared/utils/optimizationLevelMessage';
+import { addToLibrary } from '@/shared/api/library';
+import { deleteChat } from '@/shared/api/chat';
+import { useRouter } from 'next/navigation';
 
 /**
  * Formats system level response - parses system prompt sections and formats them
@@ -265,11 +271,27 @@ function formatMasterLevelResponse(response: any): string {
 export default function ChatSessionPage() {
     const params = useParams();
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-    const [chatId, setChatId] = useState<string | undefined>(
-        params.id && params.id !== 'new' ? (params.id as string) : undefined
-    );
+    
+    // Immediately redirect if route param is invalid
+    useEffect(() => {
+        const id = params.id as string | undefined;
+        if (id === 'undefined' || id === 'null') {
+            router.replace('/chat/new');
+            return;
+        }
+    }, [params.id, router]);
+    
+    const [chatId, setChatId] = useState<string | undefined>(() => {
+        const id = params.id as string | undefined;
+        // Validate that id is a valid UUID format, not 'new', 'undefined', or 'null'
+        if (id && id !== 'new' && id !== 'undefined' && id !== 'null') {
+            return id;
+        }
+        return undefined;
+    });
     
     const levelParam = searchParams.get('level');
     const optimizationLevel = levelParam && levelParam in OPTIMIZATION_LEVELS 
@@ -297,8 +319,29 @@ export default function ChatSessionPage() {
     
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const [showLimitModal, setShowLimitModal] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [featureName, setFeatureName] = useState<string>('');
+    const [sharePromptContent, setSharePromptContent] = useState<string>('');
+    const [shareMessageId, setShareMessageId] = useState<string>('');
+    const [isSharing, setIsSharing] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [sharedMessageIds, setSharedMessageIds] = useState<Set<string>>(new Set());
     
+    // Load user's shared message ids once
+    useEffect(() => {
+        if (!user) return;
+        const loadShared = async () => {
+            try {
+                const myLibrary = await getMyLibrary(user.user_id);
+                setSharedMessageIds(new Set(myLibrary.map((item) => item.message_id)));
+            } catch (error) {
+                // Don't block chat if library fetch fails
+                logError(error, 'ChatSessionPage.loadSharedLibrary');
+            }
+        };
+        loadShared();
+    }, [user?.user_id]);
     useEffect(() => {
         const isNewChat = !chatId || chatId === 'new';
         const hasLevelMessage = messages.some(msg => msg.id === 'optimization-level-info');
@@ -307,7 +350,7 @@ export default function ChatSessionPage() {
             const levelMessage: Message = {
                 id: 'optimization-level-info',
                 role: 'assistant',
-                content: generateOptimizationLevelMessage(optimizationLevel, user.package_name),
+                content: generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role),
             };
             setMessages([levelMessage]);
         }
@@ -315,7 +358,8 @@ export default function ChatSessionPage() {
 
     useEffect(() => {
         const loadMessages = async () => {
-            if (!chatId || chatId === 'new') {
+            // Validate chatId before making API call
+            if (!chatId || chatId === 'new' || chatId === 'undefined' || chatId === 'null') {
                 return;
             }
 
@@ -324,11 +368,17 @@ export default function ChatSessionPage() {
                 const response = await getChatMessages(chatId);
                 const formattedMessages: Message[] = response.items
                     .reverse()
-                    .map((msg) => ({
-                        id: crypto.randomUUID(),
-                        role: msg.role as 'user' | 'assistant',
-                        content: formatMessage(msg.role, msg.content), // Format the content
-                    }));
+                    .map((msg: any) => {
+                        const backendId = msg.id as string | undefined;
+                        const isShared = !!backendId && sharedMessageIds.has(backendId);
+                        return {
+                            id: backendId || crypto.randomUUID(),
+                            role: msg.role as 'user' | 'assistant',
+                            content: formatMessage(msg.role, msg.content),
+                            messageId: backendId,
+                            isShared,
+                        };
+                    });
                 setMessages(formattedMessages);
             } catch (error) {
                 logError(error, 'ChatSessionPage.loadMessages');
@@ -339,15 +389,26 @@ export default function ChatSessionPage() {
         };
 
         loadMessages();
-    }, [chatId]);
+    }, [chatId, sharedMessageIds]);
 
     // Update chatId when params change
     useEffect(() => {
-        const newChatId = params.id && params.id !== 'new' ? (params.id as string) : undefined;
+        const id = params.id as string | undefined;
+        // Validate that id is a valid UUID format, not 'new', 'undefined', or 'null'
+        const newChatId = id && id !== 'new' && id !== 'undefined' && id !== 'null' 
+            ? id 
+            : undefined;
+        
+        // If route has 'undefined', redirect to /chat/new
+        if (id === 'undefined' || id === 'null') {
+            router.replace('/chat/new');
+            return;
+        }
+        
         if (newChatId !== chatId) {
             setChatId(newChatId);
         }
-    }, [params.id]);
+    }, [params.id, chatId, router]);
     
     useEffect(() => {
         if (chatAreaRef.current) {
@@ -385,19 +446,28 @@ export default function ChatSessionPage() {
             },
             {
                 onSuccess: async (data) => {
-                    const isNewChat = !chatId && data.chat_id;
+                    // Validate chat_id before using it
+                    const newChatId = data.chat_id;
+                    const isNewChat = !chatId && newChatId && newChatId !== 'undefined' && newChatId !== 'null';
+                    
                     if (isNewChat) {
-                        setChatId(data.chat_id);
-                        window.history.replaceState(null, '', `/chat/${data.chat_id}`);
+                        setChatId(newChatId);
+                        window.history.replaceState(null, '', `/chat/${newChatId}`);
                         try {
-                            const response = await getChatMessages(data.chat_id);
+                            const response = await getChatMessages(newChatId);
                             const formattedMessages: Message[] = response.items
                                 .reverse()
-                                .map((msg) => ({
-                                    id: crypto.randomUUID(),
-                                    role: msg.role as 'user' | 'assistant',
-                                    content: formatMessage(msg.role, msg.content), // Format the content
-                                }));
+                                .map((msg: any) => {
+                                    const backendId = msg.id as string | undefined;
+                                    const isShared = !!backendId && sharedMessageIds.has(backendId);
+                                    return {
+                                        id: backendId || crypto.randomUUID(),
+                                        role: msg.role as 'user' | 'assistant',
+                                        content: formatMessage(msg.role, msg.content),
+                                        messageId: backendId,
+                                        isShared,
+                                    };
+                                });
                             setMessages(formattedMessages);
                             return; // Exit early since we've loaded messages from backend
                         } catch (error) {
@@ -414,44 +484,23 @@ export default function ChatSessionPage() {
                     } else if (isSystemLevel) {
                         responseContent = formatSystemLevelResponse(response);
                     } else {
-                        const sections: string[] = [];
-                        
-                        if (response.share_message) {
-                            sections.push(response.share_message);
-                            sections.push('');
-                        }
-                        
-                        if (response.optimized_prompt) {
-                            sections.push('**Optimized Prompt:**');
-                            sections.push(response.optimized_prompt);
-                            sections.push('');
-                        }
-                        
-                        if (response.changes_made && Array.isArray(response.changes_made) && response.changes_made.length > 0) {
-                            sections.push('**Changes Made:**');
-                            sections.push(response.changes_made.map((change: string) => `• ${change}`).join('\n'));
-                            sections.push('');
-                        }
-                        
-                        if (isStructuredLevel && response.techniques_applied && Array.isArray(response.techniques_applied) && response.techniques_applied.length > 0) {
-                            sections.push('**Techniques Applied:**');
-                            sections.push(response.techniques_applied.map((tech: string) => `• ${tech}`).join('\n'));
-                            sections.push('');
-                        }
-                        
-                        if (isStructuredLevel && response.pro_tip) {
-                            sections.push('**Pro Tip:**');
-                            sections.push(response.pro_tip);
-                            sections.push('');
-                        }
-                        
-                        responseContent = sections.filter(s => s !== '').join('\n');
+                        // Convert response object to JSON string for formatAssistantMessage to parse
+                        // formatAssistantMessage handles all the formatting logic including JSON parsing
+                        const responseString = typeof response === 'string' 
+                            ? response 
+                            : JSON.stringify(response);
+                        responseContent = formatAssistantMessage(responseString);
                     }
 
+                    const backendId = (data as any).message_id || (data.response as any)?.message_id;
+                    const isShared = !!backendId && sharedMessageIds.has(backendId);
                     const aiResponse: Message = {
-                        id: crypto.randomUUID(),
+                        // Prefer backend-provided id so share works; fallback to random UUID
+                        id: backendId || crypto.randomUUID(),
                         role: 'assistant',
                         content: responseContent,
+                        messageId: backendId, // keep backend id for sharing
+                        isShared,
                     };
                     setMessages((prev) => [...prev, aiResponse]);
                 },
@@ -485,6 +534,67 @@ export default function ChatSessionPage() {
         );
     };
 
+    const handleShareClick = (promptContent: string, messageId: string) => {
+        // Find the message; support both id and messageId just in case
+        const message = messages.find(msg => msg.id === messageId || msg.messageId === messageId);
+        const shareId = message?.messageId || message?.id;
+        if (!shareId) {
+            alert('Unable to share: Message ID not found. Please try again.');
+            return;
+        }
+        
+        setSharePromptContent(promptContent);
+        setShareMessageId(shareId);
+        setShowShareModal(true);
+    };
+
+    const handleConfirmShare = async () => {
+        if (!user || !shareMessageId) return;
+
+        try {
+            setIsSharing(true);
+            await addToLibrary(user.user_id, shareMessageId);
+            // Mark message as shared in local state
+            setSharedMessageIds((prev) => {
+                const next = new Set(prev);
+                next.add(shareMessageId);
+                return next;
+            });
+            setMessages((prev) =>
+                prev.map((m) => {
+                    const id = m.messageId || m.id;
+                    if (id === shareMessageId) {
+                        return { ...m, isShared: true };
+                    }
+                    return m;
+                })
+            );
+            setShowShareModal(false);
+            router.push('/library');
+        } catch (error: any) {
+            console.error('Failed to share prompt:', error);
+            alert(error.message || 'Failed to share prompt. Please try again.');
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    const handleDeleteChat = async () => {
+        if (!user || !chatId || chatId === 'new') return;
+
+        try {
+            setIsDeleting(true);
+            await deleteChat(user.user_id, chatId);
+            setShowDeleteModal(false);
+            router.push('/chat/new');
+        } catch (error: any) {
+            console.error('Failed to delete chat:', error);
+            alert(error.message || 'Failed to delete chat. Please try again.');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     return (
         <div className="flex flex-col h-full">
             <UpgradeRequiredModal
@@ -497,10 +607,24 @@ export default function ChatSessionPage() {
                 onClose={() => setShowLimitModal(false)}
                 featureName={featureName}
             />
+            <SharePromptModal
+                isOpen={showShareModal}
+                onClose={() => setShowShareModal(false)}
+                onConfirm={handleConfirmShare}
+                isLoading={isSharing}
+            />
+            <DeleteChatModal
+                isOpen={showDeleteModal}
+                onClose={() => setShowDeleteModal(false)}
+                onConfirm={handleDeleteChat}
+                isLoading={isDeleting}
+            />
             <ChatArea 
                 messages={messages} 
                 isLoading={isPending || isLoadingMessages} 
-                ref={chatAreaRef} 
+                ref={chatAreaRef}
+                onShare={handleShareClick}
+                onGoToLibrary={() => router.push('/library')}
             />
             <ChatInput onSendMessage={handleSendMessage} isLoading={isPending} />
         </div>

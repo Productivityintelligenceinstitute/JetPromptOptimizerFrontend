@@ -1,20 +1,23 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import AdminGuard from '@/shared/components/auth/AdminGuard';
 import { useAuth } from '@/shared/context/AuthContext';
 import { AdminNavbar } from '@/shared/components/navbar/AdminNavbar';
+import Pagination from '@/shared/components/admin/Pagination';
+import {
+    getPackages,
+    getPermissions,
+    getPackagePermissionsByPackageName,
+    createPackage,
+    deletePackage,
+    assignPermissionToPackage,
+    removePermissionFromPackage,
+    type Package,
+    type Permission,
+} from '@/shared/api/adminPackages';
 
-interface Package {
-    package_id: number;
-    package_name: string;
-    is_custom: boolean;
-    created_at?: string;
-}
-
-interface Permission {
-    permission_id: number;
-    permission_name: string;
+interface PermissionDisplay extends Permission {
     display_name: string;
     description: string;
 }
@@ -25,82 +28,42 @@ interface PackagePermission {
     query_limit: number | null;
 }
 
-interface CreatePackageRequest {
-    package_name: string;
-    is_custom: boolean;
-    permissions: PackagePermission[];
-}
-
-const DUMMY_PERMISSIONS: Permission[] = [
-    {
-        permission_id: 1,
-        permission_name: 'BASIC_OPT',
+// Map permission names to display names and descriptions
+const PERMISSION_DISPLAY_MAP: Record<string, { display_name: string; description: string }> = {
+    'BASIC_OPT': {
         display_name: 'Basic Optimization',
         description: 'Basic level prompt optimization'
     },
-    {
-        permission_id: 2,
-        permission_name: 'STRUCT_OPT',
+    'STRUCT_OPT': {
         display_name: 'Structured Optimization',
         description: 'Structured level prompt optimization with techniques and tips'
     },
-    {
-        permission_id: 3,
-        permission_name: 'MASTER_OPT',
+    'MASTER_OPT': {
         display_name: 'Master Optimization',
         description: 'Master level optimization with interactive Q&A'
     },
-    {
-        permission_id: 4,
-        permission_name: 'SYS_OPT',
+    'SYS_OPT': {
         display_name: 'System Optimization',
         description: 'System level optimization for comprehensive prompt engineering'
     },
-    {
-        permission_id: 5,
-        permission_name: 'LIB',
+    'LIB': {
         display_name: 'Library Access',
         description: 'Access to prompt library and templates'
     }
-];
+};
 
-const DUMMY_PACKAGES: Package[] = [
-    {
-        package_id: 1,
-        package_name: 'Free',
-        is_custom: false,
-        created_at: '2024-01-01T00:00:00Z'
-    },
-    {
-        package_id: 2,
-        package_name: 'Essential',
-        is_custom: false,
-        created_at: '2024-01-01T00:00:00Z'
-    },
-    {
-        package_id: 3,
-        package_name: 'Pro',
-        is_custom: false,
-        created_at: '2024-01-01T00:00:00Z'
-    },
-    {
-        package_id: 4,
-        package_name: 'Enterprise',
-        is_custom: true,
-        created_at: '2024-02-15T10:30:00Z'
-    },
-    {
-        package_id: 5,
-        package_name: 'Custom Plan A',
-        is_custom: true,
-        created_at: '2024-03-20T14:45:00Z'
-    }
-];
+const getPermissionDisplay = (permissionName: string): { display_name: string; description: string } => {
+    return PERMISSION_DISPLAY_MAP[permissionName] || {
+        display_name: permissionName,
+        description: 'Custom permission'
+    };
+};
 
 export default function AdminPackagesPage() {
     const { user } = useAuth();
-    const [packages, setPackages] = useState<Package[]>(DUMMY_PACKAGES);
-    const [isLoading, setIsLoading] = useState(false);
+    const [packages, setPackages] = useState<Package[]>([]);
+    const [permissions, setPermissions] = useState<PermissionDisplay[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editingPackageId, setEditingPackageId] = useState<number | null>(null);
@@ -112,29 +75,67 @@ export default function AdminPackagesPage() {
     const [editSelectedPermissions, setEditSelectedPermissions] = useState<Record<number, PackagePermission>>({});
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(9);
 
-    const fetchPackages = async () => {
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const fetchData = async () => {
         try {
             setIsLoading(true);
-            setPackages(DUMMY_PACKAGES);
+            setError(null);
+            
+            const [packagesData, permissionsData] = await Promise.all([
+                getPackages(),
+                getPermissions(),
+            ]);
+
+            setPackages(packagesData);
+            
+            // Map permissions with display names
+            const permissionsWithDisplay = permissionsData.map(perm => ({
+                ...perm,
+                ...getPermissionDisplay(perm.permission_name),
+            }));
+            setPermissions(permissionsWithDisplay);
         } catch (err: any) {
-            setError(err.message || 'Failed to fetch packages');
+            setError(err.message || 'Failed to fetch data');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleEditPackage = (pkg: Package) => {
-        setEditingPackageId(pkg.package_id);
-        setEditPackageName(pkg.package_name);
-        setEditIsCustom(pkg.is_custom);
-        setIsEditing(true);
-        setError(null);
-        setSuccess(null);
-        
-        // TODO: Load actual permissions for this package from API
-        // For now, initialize with empty permissions
-        setEditSelectedPermissions({});
+    const handleEditPackage = async (pkg: Package) => {
+        try {
+            setEditingPackageId(pkg.package_id);
+            setEditPackageName(pkg.package_name);
+            setEditIsCustom(pkg.is_custom);
+            setIsEditing(true);
+            setError(null);
+            setSuccess(null);
+            
+            // Load permissions for this package by package name
+            const packagePermissions = await getPackagePermissionsByPackageName(pkg.package_name);
+            
+            // Map to edit permissions state - need to find permission_id from permission_name
+            const permissionsMap: Record<number, PackagePermission> = {};
+            packagePermissions.forEach(pp => {
+                const permission = permissions.find(p => p.permission_name === pp.permission_name);
+                if (permission) {
+                    permissionsMap[permission.permission_id] = {
+                        permission_id: permission.permission_id,
+                        is_enabled: pp.is_enabled,
+                        query_limit: pp.query_limit,
+                    };
+                }
+            });
+            
+            setEditSelectedPermissions(permissionsMap);
+        } catch (err: any) {
+            setError(err.message || 'Failed to load package permissions');
+        }
     };
 
     const handleCancelEdit = () => {
@@ -167,33 +168,78 @@ export default function AdminPackagesPage() {
             setError(null);
             setSuccess(null);
             
-            const packageData: CreatePackageRequest = {
-                package_name: editPackageName.trim(),
-                is_custom: editIsCustom,
-                permissions: enabledPermissions
-            };
-
-            // TODO: Replace with actual API calls
-            // Step 1: Update package
-            // await updatePackage(editingPackageId, {
-            //     package_name: packageData.package_name,
-            //     is_custom: packageData.is_custom
-            // });
-
-            // Step 2: Update permissions
-            // await updatePackagePermissions(editingPackageId, packageData.permissions);
-
-            // For now, update local state
-            setPackages(packages.map(pkg => 
-                pkg.package_id === editingPackageId
-                    ? { ...pkg, package_name: editPackageName.trim(), is_custom: editIsCustom }
-                    : pkg
-            ));
+            // Get current package and its permissions
+            const originalPackage = packages.find(p => p.package_id === editingPackageId);
+            if (!originalPackage) {
+                setError('Package not found');
+                return;
+            }
             
-            setSuccess('Package updated successfully!');
+            const currentPermissions = await getPackagePermissionsByPackageName(originalPackage.package_name);
+            
+            // Map current permissions by permission_name for comparison
+            const currentPermissionNames = new Set(currentPermissions.map(p => p.permission_name));
+            const newPermissionNames = new Set(
+                enabledPermissions.map(p => {
+                    const perm = permissions.find(per => per.permission_id === p.permission_id);
+                    return perm?.permission_name;
+                }).filter(Boolean) as string[]
+            );
+            
+            // Remove permissions that are no longer enabled
+            const permissionsToRemove = currentPermissions.filter(
+                p => !newPermissionNames.has(p.permission_name)
+            );
+            
+            // Add or update permissions
+            const permissionsToAdd = enabledPermissions.filter(
+                p => {
+                    const perm = permissions.find(per => per.permission_id === p.permission_id);
+                    if (!perm) return false;
+                    const currentPerm = currentPermissions.find(cp => cp.permission_name === perm.permission_name);
+                    return !currentPerm || 
+                        currentPerm.is_enabled !== p.is_enabled ||
+                        currentPerm.query_limit !== p.query_limit;
+                }
+            );
+            
+            // Remove old permissions (need to find package_id and permission_id for delete endpoint)
+            for (const permToRemove of permissionsToRemove) {
+                const perm = permissions.find(p => p.permission_name === permToRemove.permission_name);
+                if (perm) {
+                    await removePermissionFromPackage(editingPackageId, perm.permission_id);
+                }
+            }
+            
+            // Add/update permissions using package_name and permission_name
+            for (const perm of permissionsToAdd) {
+                const permission = permissions.find(p => p.permission_id === perm.permission_id);
+                if (permission) {
+                    await assignPermissionToPackage({
+                        package_name: editPackageName.trim(),
+                        permission_name: permission.permission_name,
+                        is_enabled: perm.is_enabled,
+                        query_limit: perm.query_limit,
+                    });
+                }
+            }
+            
+            // Note: Package name and is_custom cannot be updated via API (no PUT endpoint)
+            // If they changed, show a warning
+            if (originalPackage && (
+                originalPackage.package_name !== editPackageName.trim() ||
+                originalPackage.is_custom !== editIsCustom
+            )) {
+                setError('Package name and custom flag cannot be updated. Only permissions were updated.');
+            } else {
+                setSuccess('Package permissions updated successfully!');
+            }
+            
+            // Refresh packages list
+            await fetchData();
             handleCancelEdit();
         } catch (err: any) {
-            setError(err.message || 'Failed to update package');
+            setError(err.message || 'Failed to update package permissions');
         } finally {
             setIsCreating(false);
         }
@@ -265,23 +311,32 @@ export default function AdminPackagesPage() {
             setError(null);
             setSuccess(null);
             
-            const packageData: CreatePackageRequest = {
+            // Step 1: Create the package
+            const newPackage = await createPackage({
                 package_name: newPackageName.trim(),
                 is_custom: isCustom,
-                permissions: enabledPermissions
-            };
-
-            const newPackage: Package = {
-                package_id: packages.length + 1,
-                package_name: newPackageName.trim(),
-                is_custom: isCustom,
-                created_at: new Date().toISOString()
-            };
-            setPackages([...packages, newPackage]);
+            });
+            
+            // Step 2: Assign permissions to the package using package_name and permission_name
+            for (const perm of enabledPermissions) {
+                const permission = permissions.find(p => p.permission_id === perm.permission_id);
+                if (permission) {
+                    await assignPermissionToPackage({
+                        package_name: newPackage.package_name,
+                        permission_name: permission.permission_name,
+                        is_enabled: perm.is_enabled,
+                        query_limit: perm.query_limit,
+                    });
+                }
+            }
+            
             setSuccess('Package created successfully!');
             setNewPackageName('');
             setIsCustom(true);
             setSelectedPermissions({});
+            
+            // Refresh packages list
+            await fetchData();
         } catch (err: any) {
             setError(err.message || 'Failed to create package');
         } finally {
@@ -289,17 +344,50 @@ export default function AdminPackagesPage() {
         }
     };
 
+    const handleDeletePackage = async (packageId: number) => {
+        if (!confirm('Are you sure you want to delete this package? This action cannot be undone.')) {
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            setError(null);
+            await deletePackage(packageId);
+            setSuccess('Package deleted successfully!');
+            await fetchData();
+        } catch (err: any) {
+            setError(err.message || 'Failed to delete package');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const paginatedPackages = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        return packages.slice(startIndex, endIndex);
+    }, [packages, currentPage, itemsPerPage]);
+
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
+    };
+
+    const handleItemsPerPageChange = (newItemsPerPage: number) => {
+        setItemsPerPage(newItemsPerPage);
+        setCurrentPage(1);
+    };
+
     return (
         <AdminGuard>
             <div className="min-h-screen bg-gray-50">
                 <AdminNavbar />
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-24">
+                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 pt-28">
                     <div className="mb-8">
                         <h1 className="text-3xl font-semibold text-[#335386] mb-2">
-                            Admin Panel
+                            Packages & Permissions
                         </h1>
                         <p className="text-gray-600">
-                            Welcome, {user?.email}. Manage custom packages and permissions.
+                            Welcome, {user?.email}. Create subscription packages and control which features each plan can access.
                         </p>
                     </div>
 
@@ -362,7 +450,7 @@ export default function AdminPackagesPage() {
                                             Permissions
                                         </label>
                                         <div className="space-y-4 p-4 bg-white rounded-lg border border-gray-200">
-                                            {DUMMY_PERMISSIONS.map((permission) => {
+                                            {permissions.map((permission) => {
                                                 const isEnabled = editSelectedPermissions[permission.permission_id]?.is_enabled || false;
                                                 const queryLimit = editSelectedPermissions[permission.permission_id]?.query_limit;
 
@@ -434,7 +522,7 @@ export default function AdminPackagesPage() {
                                         <button
                                             type="submit"
                                             disabled={isCreating || !editPackageName.trim()}
-                                            className="flex-1 rounded-lg bg-jet-blue px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90 focus:outline-none focus:ring-2 focus:ring-jet-blue focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                            className="flex-1 rounded-lg bg-jet-blue px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90 focus:outline-none focus:ring-2 focus:ring-jet-blue focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                                         >
                                             {isCreating ? (
                                                 <>
@@ -451,7 +539,7 @@ export default function AdminPackagesPage() {
                                         <button
                                             type="button"
                                             onClick={handleCancelEdit}
-                                            className="px-6 py-3 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                            className="px-6 py-3 text-sm font-semibold text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors cursor-pointer"
                                         >
                                             Cancel
                                         </button>
@@ -501,7 +589,7 @@ export default function AdminPackagesPage() {
                                         Permissions
                                     </label>
                                     <div className="space-y-4 p-4 bg-white rounded-lg border border-gray-200">
-                                        {DUMMY_PERMISSIONS.map((permission) => {
+                                        {permissions.map((permission) => {
                                             const isEnabled = selectedPermissions[permission.permission_id]?.is_enabled || false;
                                             const queryLimit = selectedPermissions[permission.permission_id]?.query_limit;
 
@@ -572,7 +660,7 @@ export default function AdminPackagesPage() {
                                 <button
                                     type="submit"
                                     disabled={isCreating || !newPackageName.trim()}
-                                    className="w-full rounded-lg bg-jet-blue px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90 focus:outline-none focus:ring-2 focus:ring-jet-blue focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    className="w-full rounded-lg bg-jet-blue px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90 focus:outline-none focus:ring-2 focus:ring-jet-blue focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                                 >
                                     {isCreating ? (
                                         <>
@@ -608,36 +696,57 @@ export default function AdminPackagesPage() {
                                     <p className="text-sm text-gray-500">Create your first custom package above</p>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {packages.map((pkg) => (
-                                        <div
-                                            key={pkg.package_id}
-                                            className="p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow"
-                                        >
-                                            <div className="flex items-start justify-between mb-2">
-                                                <h4 className="text-lg font-semibold text-gray-900">
-                                                    {pkg.package_name}
-                                                </h4>
-                                                <div className="flex items-center gap-2">
-                                                    {pkg.is_custom && (
-                                                        <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
-                                                            Custom
-                                                        </span>
-                                                    )}
-                                                    <button
-                                                        onClick={() => handleEditPackage(pkg)}
-                                                        className="px-3 py-1 text-xs font-medium text-jet-blue hover:bg-jet-blue/10 rounded-lg transition-colors"
-                                                    >
-                                                        Edit
-                                                    </button>
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {paginatedPackages.map((pkg) => (
+                                            <div
+                                                key={pkg.package_id}
+                                                className="p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow"
+                                            >
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <h4 className="text-lg font-semibold text-gray-900">
+                                                        {pkg.package_name}
+                                                    </h4>
+                                                    <div className="flex items-center gap-2">
+                                                        {pkg.is_custom && (
+                                                            <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
+                                                                Custom
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleEditPackage(pkg)}
+                                                            className="px-3 py-1 text-xs font-medium text-jet-blue hover:bg-jet-blue/10 rounded-lg transition-colors cursor-pointer"
+                                                            disabled={isLoading}
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        {pkg.is_custom && (
+                                                            <button
+                                                                onClick={() => handleDeletePackage(pkg.package_id)}
+                                                                className="px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                                                disabled={isLoading}
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
+                                                <p className="text-sm text-gray-500">
+                                                    ID: {pkg.package_id}
+                                                </p>
                                             </div>
-                                            <p className="text-sm text-gray-500">
-                                                ID: {pkg.package_id}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </div>
+
+                                    <Pagination
+                                        totalItems={packages.length}
+                                        itemsPerPage={itemsPerPage}
+                                        currentPage={currentPage}
+                                        onPageChange={handlePageChange}
+                                        onItemsPerPageChange={handleItemsPerPageChange}
+                                        showItemsPerPage={true}
+                                    />
+                                </>
                             )}
                         </div>
                     </div>

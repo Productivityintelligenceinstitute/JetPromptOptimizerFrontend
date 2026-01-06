@@ -2,6 +2,8 @@ export interface Message {
     id: string;
     role: 'user' | 'assistant';
     content: string;
+    messageId?: string; // Backend message_id for sharing
+    isShared?: boolean; // Whether this message is already in the library
 }
 
 export interface ChatHistoryItem {
@@ -11,7 +13,7 @@ export interface ChatHistoryItem {
 }
 
 export interface Chat {
-    chat_id: string;
+    id: string;
     chat_title: string;
     user_id: string;
     created_at: string;
@@ -24,6 +26,7 @@ export interface ChatListResponse {
 export interface ChatMessage {
     role: string;
     content: string;
+    message_id?: string;
 }
 
 export interface PaginatedChatMessages {
@@ -50,7 +53,9 @@ export interface ChatAreaProps {
 
 export interface OptimizationResponse {
     user_id: string;
+    message_id?: string; // backend llm message id for sharing
     response: {
+        message_id?: string; // sometimes nested
         optimized_prompt: string;
         changes_made: string[];
         share_message: string;

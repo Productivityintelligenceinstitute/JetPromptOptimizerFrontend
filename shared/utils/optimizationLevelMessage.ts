@@ -55,11 +55,18 @@ const LEVEL_DESCRIPTIONS: Record<string, {
 
 /**
  * Gets the query limit message based on package and level
+ * Admin users have unlimited access to all levels
  */
 export function getQueryLimitMessage(
   level: string,
-  packageName: string | undefined | null
+  packageName: string | undefined | null,
+  userRole?: string | null
 ): string {
+  // Admin users have unlimited access to all levels
+  if (userRole === 'admin') {
+    return 'Unlimited';
+  }
+  
   const normalizedPackage = packageName?.toLowerCase() || 'free';
   
   if (level === 'basic') {
@@ -85,10 +92,11 @@ export function getQueryLimitMessage(
  */
 export function generateOptimizationLevelMessage(
   levelInfo: OptimizationLevelInfo,
-  packageName: string | undefined | null
+  packageName: string | undefined | null,
+  userRole?: string | null
 ): string {
   const levelDetails = LEVEL_DESCRIPTIONS[levelInfo.level] || LEVEL_DESCRIPTIONS.basic;
-  const queryLimit = getQueryLimitMessage(levelInfo.level, packageName);
+  const queryLimit = getQueryLimitMessage(levelInfo.level, packageName, userRole);
 
   const message = `**${levelDetails.icon} ${levelDetails.title}**
 

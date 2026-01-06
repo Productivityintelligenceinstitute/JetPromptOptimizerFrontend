@@ -379,26 +379,68 @@ export const formatAssistantMessage = (content: string): string => {
     const optimizedPromptIndex = content.indexOf('Optimized Prompt:');
     if (optimizedPromptIndex !== -1) {
         const afterOptimized = content.substring(optimizedPromptIndex + 'Optimized Prompt:'.length);
-        const changesIndex = afterOptimized.indexOf('Changes made:');
+        // Backend uses "Changes Made:" and "Share Message:"
+        const changesIndex = afterOptimized.indexOf('Changes Made:');
         const techniquesIndex = afterOptimized.indexOf('Techniques Applied:');
         const proTipIndex = afterOptimized.indexOf('Pro Tip:');
-        const shareIndex = afterOptimized.indexOf('Share message:');
+        const shareIndex = afterOptimized.indexOf('Share Message:');
         
         const nextSectionIndices = [changesIndex, techniquesIndex, proTipIndex, shareIndex].filter(idx => idx !== -1);
         const promptEnd = nextSectionIndices.length > 0 ? Math.min(...nextSectionIndices) : afterOptimized.length;
         
-        const prompt = afterOptimized.substring(0, promptEnd).trim();
-        if (!isEmpty(prompt)) {
-            sections.push(`**Optimized Prompt:**\n${prompt}`);
+        const rawPrompt = afterOptimized.substring(0, promptEnd).trim();
+        if (!isEmpty(rawPrompt)) {
+            let formattedPrompt = rawPrompt;
+
+            // Special handling for unified prompt-schema style optimized prompts
+            // Example: [{'role': '...', 'objective': '...', 'context': '...', 'task': '...', 'constraints': '...'}]
+            const unifiedLike = rawPrompt.trim().startsWith('[{') && rawPrompt.trim().endsWith('}]');
+            if (unifiedLike) {
+                const extractField = (key: string): string | undefined => {
+                    // Match `'key': 'value'` where value is up to the next `'some_other_key':` or end of object
+                    const regex = new RegExp(`'${key}'\\s*:\\s*'([\\s\\S]*?)'(?=,\\s*'\\w+'\\s*:|'}\\])`);
+                    const match = rawPrompt.match(regex);
+                    return match ? match[1] : undefined;
+                };
+
+                const role = extractField('role');
+                const objective = extractField('objective');
+                const contextText = extractField('context');
+                const task = extractField('task');
+                const constraints = extractField('constraints');
+
+                const parts: string[] = [];
+                if (role) {
+                    parts.push(`**Role:** ${role}`);
+                }
+                if (objective) {
+                    parts.push(`**Objective:** ${objective}`);
+                }
+                if (contextText) {
+                    parts.push(`**Context:** ${contextText}`);
+                }
+                if (task) {
+                    parts.push(`**Task:** ${task}`);
+                }
+                if (constraints) {
+                    parts.push(`**Constraints:** ${constraints}`);
+                }
+
+                if (parts.length > 0) {
+                    formattedPrompt = parts.join('\n\n');
+                }
+            }
+
+            sections.push(`**Optimized Prompt:**\n${formattedPrompt}`);
         }
     }
     
-    const changesIndex = content.indexOf('Changes made:');
+    const changesIndex = content.indexOf('Changes Made:');
     if (changesIndex !== -1) {
-        const afterChanges = content.substring(changesIndex + 'Changes made:'.length);
+        const afterChanges = content.substring(changesIndex + 'Changes Made:'.length);
         const techniquesIndex = afterChanges.indexOf('Techniques Applied:');
         const proTipIndex = afterChanges.indexOf('Pro Tip:');
-        const shareIndex = afterChanges.indexOf('Share message:');
+        const shareIndex = afterChanges.indexOf('Share Message:');
         
         const nextSectionIndices = [techniquesIndex, proTipIndex, shareIndex].filter(idx => idx !== -1);
         const changesEnd = nextSectionIndices.length > 0 ? Math.min(...nextSectionIndices) : afterChanges.length;
@@ -469,7 +511,7 @@ export const formatAssistantMessage = (content: string): string => {
     if (techniquesIndex !== -1) {
         const afterTechniques = content.substring(techniquesIndex + 'Techniques Applied:'.length);
         const proTipIndex = afterTechniques.indexOf('Pro Tip:');
-        const shareIndex = afterTechniques.indexOf('Share message:');
+        const shareIndex = afterTechniques.indexOf('Share Message:');
         
         // Find the earliest next section
         const nextSectionIndices = [proTipIndex, shareIndex].filter(idx => idx !== -1);
@@ -538,7 +580,7 @@ export const formatAssistantMessage = (content: string): string => {
     const proTipIndex = content.indexOf('Pro Tip:');
     if (proTipIndex !== -1) {
         const afterProTip = content.substring(proTipIndex + 'Pro Tip:'.length);
-        const shareIndex = afterProTip.indexOf('Share message:');
+        const shareIndex = afterProTip.indexOf('Share Message:');
         
         const proTipEnd = shareIndex !== -1 ? shareIndex : afterProTip.length;
         const proTip = afterProTip.substring(0, proTipEnd).trim();
@@ -548,9 +590,9 @@ export const formatAssistantMessage = (content: string): string => {
         }
     }
     
-    const shareIndex = content.indexOf('Share message:');
+    const shareIndex = content.indexOf('Share Message:');
     if (shareIndex !== -1) {
-        const shareMessage = content.substring(shareIndex + 'Share message:'.length).trim();
+        const shareMessage = content.substring(shareIndex + 'Share Message:'.length).trim();
         if (!isEmpty(shareMessage)) {
             sections.push(shareMessage);
         }

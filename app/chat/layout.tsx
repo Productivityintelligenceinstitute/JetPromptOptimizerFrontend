@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Sidebar from '@/shared/components/Chat/Sidebar';
 import { cn } from '@/shared/lib/cn';
 import AuthGuard from '@/shared/components/auth/AuthGuard';
+import AppointmentWidget from '@/shared/components/Homepage/AppointmentWidget';
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -31,6 +32,8 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                         {children}
                     </div>
                 </main>
+                
+                <AppointmentWidget />
             </div>
         </AuthGuard>
     );

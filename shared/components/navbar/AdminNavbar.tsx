@@ -12,37 +12,35 @@ export function AdminNavbar() {
 
   const isActive = (href: string) => {
     if (!pathname) return false;
-    
-    // For Home link, only active when exactly on home page
+
     if (href === "/") {
       return pathname === "/";
     }
-    
-    // For Packages link, active on /admin or /admin/packages
+
     if (href === "/admin") {
-      return pathname === "/admin" || pathname === "/admin/packages";
+      return pathname === "/admin";
     }
-    
-    // For other links, exact match or starts with
-    return pathname === href || pathname.startsWith(href);
+
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   const navLinks = [
     { href: "/", label: "Home" },
-    { href: "/admin", label: "Packages" },
+    { href: "/admin", label: "Overview" },
+    { href: "/admin/kb", label: "KB Ingestion" },
+    { href: "/admin/packages", label: "Packages" },
+    { href: "/admin/users", label: "Users" },
   ];
 
   return (
     <header className="bg-white backdrop-blur fixed top-0 left-0 right-0 z-50 border-b border-gray-200">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
-        {/* Logo and brand */}
         <Link href="/" className="flex items-center gap-2">
           <div className="">
             <NavLogoIcon />
           </div>
         </Link>
 
-        {/* Navigation links */}
         <div className="flex items-center gap-4 md:gap-6">
           <ul className="flex items-center gap-6 text-[18px] font-semibold text-gray-900">
             {navLinks.map((link) => (
@@ -61,7 +59,6 @@ export function AdminNavbar() {
             ))}
           </ul>
 
-          {/* User section */}
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-700">
               Welcome, {user?.name || user?.email}

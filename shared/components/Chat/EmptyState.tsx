@@ -47,7 +47,8 @@ export default function EmptyState({ onSuggestionClick }: EmptyStateProps) {
 
     const handleSuggestionClick = (suggestion: Suggestion) => {
         // Check if user has permission for this optimization level
-        const hasPermission = hasPermissionForLevel(user?.package_name, suggestion.level);
+        // Admin users have full access to all levels
+        const hasPermission = hasPermissionForLevel(user?.package_name, suggestion.level, user?.role);
         
         if (!hasPermission) {
             // Show upgrade modal and don't proceed with navigation

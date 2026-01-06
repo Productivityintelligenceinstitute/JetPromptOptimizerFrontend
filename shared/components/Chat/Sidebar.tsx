@@ -8,10 +8,11 @@ import { PanelLeftClose, SquarePen, ChevronDown } from '@/shared/components/icon
 import { LogOut } from '@/shared/components/icons/user-icons';
 import { SidebarProps, Chat } from '@/shared/types/chat';
 import { useAuth } from '@/shared/context/AuthContext';
-import { getChatList } from '@/shared/api/chat';
+import { getChatList, deleteChat } from '@/shared/api/chat';
 import { groupChatsByDate } from '@/shared/utils/dateUtils';
 import { logError } from '@/shared/utils/errorHandler';
 import { APP_ROUTES } from '@/config/navigation';
+import DeleteChatModal from '@/shared/components/Modal/DeleteChatModal';
 
 export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     const { user, logout } = useAuth();
@@ -25,6 +26,10 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [hoveredChatId, setHoveredChatId] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const handleLogout = async () => {
@@ -73,6 +78,37 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         };
     }, []);
 
+    const handleDeleteClick = (e: React.MouseEvent, chat: Chat) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setChatToDelete(chat);
+        setShowDeleteModal(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!user || !chatToDelete) return;
+
+        try {
+            setIsDeleting(true);
+            await deleteChat(user.user_id, chatToDelete.chat_id);
+            setShowDeleteModal(false);
+            setChatToDelete(null);
+            
+            // Refresh chat list
+            await fetchChats();
+            
+            // If deleted chat was active, redirect to new chat
+            if (pathname === `/chat/${chatToDelete.chat_id}`) {
+                router.push('/chat/new');
+            }
+        } catch (error: any) {
+            console.error('Failed to delete chat:', error);
+            alert(error.message || 'Failed to delete chat. Please try again.');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     const renderChatGroup = (
         chats: Chat[],
         label: string,
@@ -88,18 +124,48 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                     </p>
                 )}
                 {chats.map((chat) => {
-                    const isActive = pathname === `/chat/${chat.chat_id}`;
+                    const isActive = pathname === `/chat/${chat.id}`;
+                    const isHovered = hoveredChatId === chat.id;
                     return (
-                        <Link
-                            key={chat.chat_id}
-                            href={`/chat/${chat.chat_id}`}
+                        <div
+                            key={chat.id}
                             className={cn(
-                                "block w-full rounded-md px-2 py-2 text-left text-sm hover:bg-gray-800 truncate transition-colors",
+                                "group flex items-center rounded-md px-2 py-2 text-left text-sm hover:bg-gray-800 transition-colors",
                                 isActive && "bg-gray-800"
                             )}
+                            onMouseEnter={() => setHoveredChatId(chat.id)}
+                            onMouseLeave={() => setHoveredChatId(null)}
                         >
-                            {chat.chat_title}
-                        </Link>
+                            <Link
+                                href={`/chat/${chat.id}`}
+                                className="flex-1 truncate min-w-0"
+                            >
+                                {chat.chat_title}
+                            </Link>
+                            <button
+                                onClick={(e) => handleDeleteClick(e, chat)}
+                                className={cn(
+                                    "ml-2 p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-red-400 transition-colors flex-shrink-0",
+                                    isHovered || isActive ? "opacity-100" : "opacity-0"
+                                )}
+                                title="Delete chat"
+                                aria-label="Delete chat"
+                            >
+                                <svg
+                                    className="w-4 h-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    />
+                                </svg>
+                            </button>
+                        </div>
                     );
                 })}
             </div>
@@ -107,12 +173,22 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
     };
 
     return (
-        <div
-            className={cn(
-                "fixed inset-y-0 left-0 z-50 flex flex-col bg-gray-900 text-white transition-all duration-300 ease-in-out",
-                isOpen ? "w-64" : "w-16"
-            )}
-        >
+        <>
+            <DeleteChatModal
+                isOpen={showDeleteModal}
+                onClose={() => {
+                    setShowDeleteModal(false);
+                    setChatToDelete(null);
+                }}
+                onConfirm={handleConfirmDelete}
+                isLoading={isDeleting}
+            />
+            <div
+                className={cn(
+                    "fixed inset-y-0 left-0 z-50 flex flex-col bg-gray-900 text-white transition-all duration-300 ease-in-out",
+                    isOpen ? "w-64" : "w-16"
+                )}
+            >
             {/* Toggle button - always visible, left-aligned */}
             <div className="flex items-center p-4">
                 <button
@@ -129,7 +205,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
 
             {/* New Chat Button */}
             <div className={cn(
-                "pb-4 transition-all duration-300",
+                "pb-2 transition-all duration-300",
                 isOpen ? "px-4" : "px-2"
             )}>
                 <Link
@@ -142,6 +218,36 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 >
                     <SquarePen className="h-4 w-4 flex-shrink-0" />
                     {isOpen && <span>New Chat</span>}
+                </Link>
+            </div>
+
+            {/* Libraries Button */}
+            <div className={cn(
+                "pb-4 transition-all duration-300",
+                isOpen ? "px-4" : "px-2"
+            )}>
+                <Link
+                    href="/library"
+                    className={cn(
+                        "flex items-center rounded-md border border-gray-700 bg-gray-800 text-sm font-medium hover:bg-gray-700 transition-colors",
+                        isOpen ? "gap-3 px-4 py-3" : "justify-center p-3"
+                    )}
+                    title={!isOpen ? "Libraries" : undefined}
+                >
+                    <svg 
+                        className="h-4 w-4 flex-shrink-0" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                    >
+                        <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" 
+                        />
+                    </svg>
+                    {isOpen && <span>Libraries</span>}
                 </Link>
             </div>
 
@@ -183,26 +289,26 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                                 className="flex w-full items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-800"
                             >
-                                <div className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0">
-                                    <span className="text-xs">
-                                        {user?.name
-                                            ? user.name
-                                                .split(' ')
-                                                .map(n => n[0])
-                                                .join('')
-                                                .toUpperCase()
-                                                .slice(0, 2)
-                                            : user?.email?.[0]?.toUpperCase() || 'U'}
-                                    </span>
-                                </div>
-                                <div className="text-left min-w-0 flex-1">
-                                    <p className="text-sm font-medium truncate">
-                                        {user?.name || user?.email || 'User'}
-                                    </p>
-                                    <p className="text-xs text-gray-400 capitalize">
-                                        {user?.package_name || 'Free'} Plan
-                                    </p>
-                                </div>
+                            <div className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs">
+                                    {user?.name
+                                        ? user.name
+                                            .split(' ')
+                                            .map(n => n[0])
+                                            .join('')
+                                            .toUpperCase()
+                                            .slice(0, 2)
+                                        : user?.email?.[0]?.toUpperCase() || 'U'}
+                                </span>
+                            </div>
+                            <div className="text-left min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">
+                                    {user?.name || user?.email || 'User'}
+                                </p>
+                                <p className="text-xs text-gray-400 capitalize">
+                                    {user?.package_name || 'Free'} Plan
+                                </p>
+                            </div>
                                 <ChevronDown className={cn(
                                     "h-4 w-4 text-gray-400 transition-transform",
                                     isDropdownOpen && "rotate-180"
@@ -256,7 +362,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                         >
                                             <LogOut className="h-4 w-4" />
                                             <span>Sign out</span>
-                                        </button>
+                        </button>
                                     </div>
                                 </div>
                             )}
@@ -269,22 +375,22 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             {!isOpen && (
                 <div className="flex-1 flex flex-col items-center justify-end pb-4">
                     <div className="relative" ref={dropdownRef}>
-                        <button 
+                    <button 
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                            className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600 transition-colors"
-                            title={user?.name || user?.email || 'User Profile'}
-                        >
-                            <span className="text-xs">
-                                {user?.name
-                                    ? user.name
-                                        .split(' ')
-                                        .map(n => n[0])
-                                        .join('')
-                                        .toUpperCase()
-                                        .slice(0, 2)
-                                    : user?.email?.[0]?.toUpperCase() || 'U'}
-                            </span>
-                        </button>
+                        className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600 transition-colors"
+                        title={user?.name || user?.email || 'User Profile'}
+                    >
+                        <span className="text-xs">
+                            {user?.name
+                                ? user.name
+                                    .split(' ')
+                                    .map(n => n[0])
+                                    .join('')
+                                    .toUpperCase()
+                                    .slice(0, 2)
+                                : user?.email?.[0]?.toUpperCase() || 'U'}
+                        </span>
+                    </button>
 
                         {isDropdownOpen && (
                             <div className="absolute bottom-full left-0 mb-2 w-56 rounded-md bg-gray-800 border border-gray-700 shadow-lg z-50 overflow-hidden">
@@ -341,5 +447,6 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 </div>
             )}
         </div>
+        </>
     );
 }

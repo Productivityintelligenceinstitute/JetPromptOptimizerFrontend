@@ -64,9 +64,15 @@ export default function OptimizationLevelInfoBanner({ levelInfo }: OptimizationL
   const { user } = useAuth();
   const levelDetails = LEVEL_DESCRIPTIONS[levelInfo.level] || LEVEL_DESCRIPTIONS.basic;
   const packageName = user?.package_name?.toLowerCase() || 'free';
+  const isAdmin = user?.role === 'admin';
 
   // Determine query limits based on package and level
+  // Admin users have unlimited access to all levels
   const getQueryLimit = () => {
+    if (isAdmin) {
+      return 'Unlimited';
+    }
+    
     if (levelInfo.level === 'basic') {
       if (packageName === 'free') return '5 queries per day';
       return 'Unlimited';

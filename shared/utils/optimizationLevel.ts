@@ -63,14 +63,21 @@ export function detectOptimizationLevel(prompt: string): OptimizationLevelInfo {
 /**
  * Checks if a user has permission for a specific optimization level
  * Based on package permissions:
+ * - Admin: Full access to all levels (no restrictions)
  * - Free: Only BASIC_OPT (5 queries/day)
  * - Essential: BASIC_OPT (unlimited) + STRUCT_OPT (unlimited)
  * - Pro: All levels (MASTER_OPT has 50/day limit, others unlimited)
  */
 export function hasPermissionForLevel(
   packageName: string | undefined | null,
-  level: OptimizationLevel
+  level: OptimizationLevel,
+  userRole?: string | null
 ): boolean {
+  // Admin users have full access to all optimization levels
+  if (userRole === 'admin') {
+    return true;
+  }
+  
   const normalizedPackage = packageName?.toLowerCase() || 'free';
   
   // Basic level is available to all plans
