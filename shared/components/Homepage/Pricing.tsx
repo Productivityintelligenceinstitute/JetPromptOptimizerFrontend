@@ -33,14 +33,12 @@ export default function Pricing() {
     // User is authenticated
     if (isFreePlan) {
       // User is already on free plan (they get it by default when signing up)
-      // Don't do anything or show a message
       return;
     }
 
-    // Handle Premium/Enterprise differently (schedule a call)
+    // Handle Premium/Enterprise differently (schedule a call in new tab)
     if (planName === 'Premium / Enterprise') {
-      // Redirect to contact/scheduling page or show message
-      alert('Please contact us to set up your Enterprise plan.');
+      window.open('https://call.jetpromptoptimizer.ai/scheduling-page', '_blank', 'noopener,noreferrer');
       return;
     }
 
