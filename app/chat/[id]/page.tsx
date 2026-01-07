@@ -10,7 +10,7 @@ import { useAuth } from '@/shared/context/AuthContext';
 import { getChatMessages } from '@/shared/api/chat';
 import { getMyLibrary } from '@/shared/api/library';
 import { logError } from '@/shared/utils/errorHandler';
-import { formatMessage, formatAssistantMessage } from '@/shared/utils/messageFormatter';
+import { formatMessage, formatAssistantMessage, formatSystemLevelResponse } from '@/shared/utils/messageFormatter';
 import { ApiError } from '@/shared/types/errors';
 import UpgradeRequiredModal from '@/shared/components/Modal/UpgradeRequiredModal';
 import DailyLimitExceededModal from '@/shared/components/Modal/DailyLimitExceededModal';
@@ -21,183 +21,6 @@ import { generateOptimizationLevelMessage } from '@/shared/utils/optimizationLev
 import { addToLibrary } from '@/shared/api/library';
 import { deleteChat } from '@/shared/api/chat';
 import { useRouter } from 'next/navigation';
-
-/**
- * Formats system level response - parses system prompt sections and formats them
- */
-function formatSystemLevelResponse(response: any): string {
-    const sections: string[] = [];
-    
-    if (response.system_prompt) {
-        const systemPrompt = response.system_prompt;
-        const parsedSections: Record<string, string> = {};
-        
-        const sectionHeaders = [
-            'ROLE:', 'OBJECTIVE:', 'CONTEXT:', 'CONSTRAINTS:', 'TASK:', 
-            'OUTPUT_FORMAT:', 'QUALITY_RUBRIC:', 'COST_GUARDRAILS:', 'ACCEPTANCE_CRITERIA:'
-        ];
-        
-        for (let i = 0; i < sectionHeaders.length; i++) {
-            const header = sectionHeaders[i];
-            const nextHeader = i < sectionHeaders.length - 1 ? sectionHeaders[i + 1] : null;
-            
-            const headerIndex = systemPrompt.indexOf(header);
-            if (headerIndex !== -1) {
-                const afterHeader = systemPrompt.substring(headerIndex + header.length).trim();
-                let content = '';
-                
-                if (nextHeader) {
-                    const nextIndex = systemPrompt.indexOf(nextHeader, headerIndex + header.length);
-                    if (nextIndex !== -1) {
-                        content = systemPrompt.substring(headerIndex + header.length, nextIndex).trim();
-                    } else {
-                        content = afterHeader;
-                    }
-                } else {
-                    const keyEnhancementsIndex = systemPrompt.indexOf('Key Enhancements:', headerIndex);
-                    if (keyEnhancementsIndex !== -1) {
-                        content = systemPrompt.substring(headerIndex + header.length, keyEnhancementsIndex).trim();
-                    } else {
-                        content = afterHeader;
-                    }
-                }
-                
-                if (content) {
-                    parsedSections[header.replace(':', '')] = content;
-                }
-            }
-        }
-        
-        if (Object.keys(parsedSections).length > 0) {
-            sections.push('**System Prompt:**\n');
-            
-            const sectionOrder = ['ROLE', 'OBJECTIVE', 'CONTEXT', 'CONSTRAINTS', 'TASK', 
-                                 'OUTPUT_FORMAT', 'QUALITY_RUBRIC', 'COST_GUARDRAILS', 'ACCEPTANCE_CRITERIA'];
-            
-            const formatSectionName = (name: string): string => {
-                return name
-                    .split('_')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                    .join(' ');
-            };
-            
-            sectionOrder.forEach(sectionName => {
-                if (parsedSections[sectionName]) {
-                    const humanReadableName = formatSectionName(sectionName);
-                    sections.push(`**${humanReadableName}:**\n${parsedSections[sectionName]}\n`);
-                }
-            });
-        } else {
-            sections.push('**System Prompt:**\n');
-            let formattedPrompt = response.system_prompt;
-            
-            const headerMap: Record<string, string> = {
-                'ROLE:': '**Role:**',
-                'OBJECTIVE:': '**Objective:**',
-                'CONTEXT:': '**Context:**',
-                'CONSTRAINTS:': '**Constraints:**',
-                'TASK:': '**Task:**',
-                'OUTPUT_FORMAT:': '**Output Format:**',
-                'QUALITY_RUBRIC:': '**Quality Rubric:**',
-                'COST_GUARDRAILS:': '**Cost Guardrails:**',
-                'ACCEPTANCE_CRITERIA:': '**Acceptance Criteria:**'
-            };
-            
-            Object.keys(headerMap).forEach(oldHeader => {
-                formattedPrompt = formattedPrompt.replace(
-                    new RegExp(`(^|\\n)\\s*${oldHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'gm'),
-                    `$1${headerMap[oldHeader]} `
-                );
-                formattedPrompt = formattedPrompt.replace(
-                    new RegExp(oldHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
-                    headerMap[oldHeader]
-                );
-            });
-            
-            sections.push(formattedPrompt);
-            sections.push('');
-        }
-    }
-    
-    if (response.key_enhancements) {
-        let enhancements: string[] = [];
-        
-        if (Array.isArray(response.key_enhancements)) {
-            enhancements = response.key_enhancements;
-        } else if (typeof response.key_enhancements === 'string') {
-            try {
-                const parsed = JSON.parse(response.key_enhancements);
-                if (Array.isArray(parsed)) {
-                    enhancements = parsed;
-                }
-            } catch (e) {
-                const trimmed = response.key_enhancements.trim();
-                if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-                    const arrayContent = trimmed.slice(1, -1).trim();
-                    if (arrayContent.length > 0) {
-                        const items: string[] = [];
-                        let currentItem = '';
-                        let inQuotes = false;
-                        let quoteChar = '';
-                        
-                        for (let i = 0; i < arrayContent.length; i++) {
-                            const char = arrayContent[i];
-                            
-                            if ((char === '"' || char === "'") && (i === 0 || arrayContent[i - 1] !== '\\')) {
-                                if (!inQuotes) {
-                                    inQuotes = true;
-                                    quoteChar = char;
-                                } else if (char === quoteChar) {
-                                    inQuotes = false;
-                                    quoteChar = '';
-                                }
-                                currentItem += char;
-                            } else if (char === ',' && !inQuotes) {
-                                const trimmedItem = currentItem.trim();
-                                if (trimmedItem.length > 0) {
-                                    const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
-                                    if (cleaned.length > 0) {
-                                        enhancements.push(cleaned);
-                                    }
-                                }
-                                currentItem = '';
-                            } else {
-                                currentItem += char;
-                            }
-                        }
-                        
-                        if (currentItem.trim().length > 0) {
-                            const trimmedItem = currentItem.trim();
-                            const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
-                            if (cleaned.length > 0) {
-                                enhancements.push(cleaned);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        if (enhancements.length > 0) {
-            sections.push('**Key Enhancements:**\n');
-            sections.push(enhancements.map((enhancement: string) => `• ${enhancement}`).join('\n'));
-            sections.push('');
-        }
-    }
-    
-    if (response.platform_tip) {
-        sections.push('**Platform Tip:**\n');
-        sections.push(response.platform_tip);
-        sections.push('');
-    }
-    
-    if (response.compliance_statement) {
-        sections.push('**Compliance Statement:**\n');
-        sections.push(response.compliance_statement);
-    }
-    
-    return sections.filter(s => s !== '').join('\n');
-}
 
 /**
  * Formats master level response - handles questions and final answers
@@ -298,9 +121,15 @@ export default function ChatSessionPage() {
         ? OPTIMIZATION_LEVELS[levelParam as OptimizationLevel]
         : null;
     
-    const isStructuredLevel = optimizationLevel?.level === 'structured';
-    const isMasteryLevel = optimizationLevel?.level === 'mastery';
-    const isSystemLevel = optimizationLevel?.level === 'system';
+    // Track the effective level for this chat so it persists even when reopened without ?level
+    const [chatLevel, setChatLevel] = useState<typeof OPTIMIZATION_LEVELS[OptimizationLevel] | null>(
+        optimizationLevel
+    );
+    const effectiveLevel = chatLevel || optimizationLevel;
+    
+    const isStructuredLevel = effectiveLevel?.level === 'structured';
+    const isMasteryLevel = effectiveLevel?.level === 'mastery';
+    const isSystemLevel = effectiveLevel?.level === 'system';
     const { mutate: optimize, isPending: isPendingBasic } = useOptimizePrompt();
     const { mutate: optimizeStructured, isPending: isPendingStructured } = useOptimizeStructuredPrompt();
     const { mutate: optimizeMaster, isPending: isPendingMaster } = useOptimizeMasterPrompt();
@@ -328,13 +157,34 @@ export default function ChatSessionPage() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [sharedMessageIds, setSharedMessageIds] = useState<Set<string>>(new Set());
     
-    // Redirect free users away from structured level chat
+    // Track the previous chatId to detect when we're switching to a different chat
+    const prevChatIdRef = useRef<string | undefined>(undefined);
+    
+    // When switching to a different chat (not just setting chatId for the first time), reset chatLevel
+    // This allows URL level to take priority when opening a new chat, but preserves level once chat is established
     useEffect(() => {
-        if (!optimizationLevel || !user) return;
-        if (isStructuredLevel && user.package_name === 'free') {
+        // Only reset if we're switching to a completely different chat
+        // If prevChatIdRef.current is undefined and chatId is set, that's the first time setting it (don't reset)
+        // If prevChatIdRef.current !== chatId and both are defined, that's switching chats (reset)
+        if (prevChatIdRef.current !== undefined && prevChatIdRef.current !== chatId && chatId !== undefined) {
+            // Switching to a different chat - reset level to URL level
+            setChatLevel(optimizationLevel);
+        } else if (prevChatIdRef.current === undefined && chatId === undefined && optimizationLevel) {
+            // New chat starting with a level in URL - set it
+            setChatLevel(optimizationLevel);
+        }
+        prevChatIdRef.current = chatId;
+    }, [chatId, optimizationLevel]);
+    
+    // Redirect free (non-admin) users away from structured level chat
+    useEffect(() => {
+        if (!effectiveLevel || !user) return;
+        // Allow admins to access all levels regardless of package
+        const isAdmin = user.role === 'admin';
+        if (isStructuredLevel && user.package_name === 'free' && !isAdmin) {
             router.replace('/chat');
         }
-    }, [optimizationLevel, isStructuredLevel, user?.package_name, user, router]);
+    }, [effectiveLevel, isStructuredLevel, user?.package_name, user, router]);
 
     // Load user's shared message ids once
     useEffect(() => {
@@ -398,7 +248,36 @@ export default function ChatSessionPage() {
         };
 
         loadMessages();
-    }, [chatId, sharedMessageIds]);
+    }, [chatId]);
+
+    // When messages load and we don't yet know the chat level, try to detect it once
+    // Only detect if we're loading an existing chat (chatId exists) and don't have a level yet
+    useEffect(() => {
+        // Don't detect if we already have a locked-in level
+        if (chatLevel || messages.length === 0) return;
+        // Only detect when loading an existing chat, not when creating a new one
+        if (!chatId || chatId === 'new') return;
+        
+        const firstAssistant = messages.find((msg) => msg.role === 'assistant');
+        if (firstAssistant && firstAssistant.content) {
+            const detected = detectOptimizationLevel(firstAssistant.content);
+            if (detected) {
+                setChatLevel(detected);
+            }
+        }
+    }, [messages, chatLevel, chatId]);
+
+    // When library shared IDs load, update message shared flags without refetching messages
+    useEffect(() => {
+        if (sharedMessageIds.size === 0 || messages.length === 0) return;
+        setMessages((prev) =>
+            prev.map((m) => {
+                const backendId = m.messageId || m.id;
+                if (!backendId) return m;
+                return { ...m, isShared: sharedMessageIds.has(backendId) };
+            })
+        );
+    }, [sharedMessageIds]);
 
     // Update chatId when params change
     useEffect(() => {
@@ -414,6 +293,11 @@ export default function ChatSessionPage() {
             return;
         }
         
+        // Don't overwrite an existing chatId with undefined when staying on the same page
+        if (!newChatId) {
+            return;
+        }
+
         if (newChatId !== chatId) {
             setChatId(newChatId);
         }
@@ -426,6 +310,12 @@ export default function ChatSessionPage() {
     }, [messages]);
 
     const handleSendMessage = (content: string) => {
+        // Lock in the level for this chat if it's the first message and we don't have a level yet
+        // This ensures the level persists for all subsequent messages in this chat
+        if (!chatId && !chatLevel && effectiveLevel) {
+            setChatLevel(effectiveLevel);
+        }
+        
         // Add user message to chat optimistically
         const userMsg: Message = {
             id: crypto.randomUUID(),
@@ -458,10 +348,16 @@ export default function ChatSessionPage() {
                     // Validate chat_id before using it
                     const newChatId = data.chat_id;
                     const isNewChat = !chatId && newChatId && newChatId !== 'undefined' && newChatId !== 'null';
-                    
+
                     if (isNewChat) {
                         setChatId(newChatId);
-                        window.history.replaceState(null, '', `/chat/${newChatId}`);
+                        // Preserve current query params (including level) when moving from /chat/new to /chat/{id}
+                        const currentSearch = window.location.search || '';
+                        const newUrl = currentSearch
+                            ? `/chat/${newChatId}${currentSearch}`
+                            : `/chat/${newChatId}`;
+                        // Use Next.js router so params stay in sync instead of manual history.replaceState
+                        router.replace(newUrl);
                         try {
                             const response = await getChatMessages(newChatId);
                             const formattedMessages: Message[] = response.items

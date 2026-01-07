@@ -90,7 +90,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
 
         try {
             setIsDeleting(true);
-            await deleteChat(user.user_id, chatToDelete.chat_id);
+            await deleteChat(user.user_id, chatToDelete.id);
             setShowDeleteModal(false);
             setChatToDelete(null);
             
@@ -98,7 +98,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             await fetchChats();
             
             // If deleted chat was active, redirect to new chat
-            if (pathname === `/chat/${chatToDelete.chat_id}`) {
+            if (pathname === `/chat/${chatToDelete.id}`) {
                 router.push('/chat/new');
             }
         } catch (error: any) {

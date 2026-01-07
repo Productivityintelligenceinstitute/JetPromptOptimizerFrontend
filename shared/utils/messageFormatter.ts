@@ -705,6 +705,352 @@ export const formatAssistantMessage = (content: string): string => {
 };
 
 /**
+ * Formats system level response - parses system prompt sections and formats them properly
+ */
+export const formatSystemLevelResponse = (response: any): string => {
+    const sections: string[] = [];
+    
+    // Handle case where response might be a string or an object
+    let systemPrompt: string = '';
+    let keyEnhancements: any = null;
+    let platformTip: string = '';
+    let complianceStatement: string = '';
+    
+    if (typeof response === 'string') {
+        // Try to parse as JSON
+        try {
+            const parsed = JSON.parse(response);
+            systemPrompt = parsed.system_prompt || '';
+            keyEnhancements = parsed.key_enhancements;
+            platformTip = parsed.platform_tip || '';
+            complianceStatement = parsed.compliance_statement || '';
+        } catch {
+            // If not JSON, treat as system_prompt string
+            systemPrompt = response;
+        }
+    } else if (response && typeof response === 'object') {
+        systemPrompt = response.system_prompt || '';
+        keyEnhancements = response.key_enhancements;
+        platformTip = response.platform_tip || '';
+        complianceStatement = response.compliance_statement || '';
+    }
+    
+    if (systemPrompt) {
+        const parsedSections: Record<string, string> = {};
+        
+        const sectionHeaders = [
+            'ROLE:', 'OBJECTIVE:', 'CONTEXT:', 'CONSTRAINTS:', 'TASK:', 
+            'OUTPUT_FORMAT:', 'QUALITY_RUBRIC:', 'COST_GUARDRAILS:', 'ACCEPTANCE_CRITERIA:'
+        ];
+        
+        // Check if system_prompt already has markdown headers (like **Role:**)
+        // Also check for plain headers (like ROLE:) that might be in the text
+        const hasMarkdownHeaders = systemPrompt.includes('**Role:**') || systemPrompt.includes('**Objective:**') || 
+                                   systemPrompt.match(/\*\*[A-Z][a-z]+(?: [A-Z][a-z]+)?:\*\*/);
+        const hasPlainHeaders = systemPrompt.match(/\b(ROLE|OBJECTIVE|CONTEXT|CONSTRAINTS|TASK|OUTPUT_FORMAT|QUALITY_RUBRIC|COST_GUARDRAILS|ACCEPTANCE_CRITERIA):/i);
+        
+        if (hasMarkdownHeaders || hasPlainHeaders) {
+            // Parse markdown-formatted sections using regex to split by all headers at once
+            const markdownHeaderMap: Record<string, string> = {
+                '**Role:**': 'ROLE',
+                '**Objective:**': 'OBJECTIVE',
+                '**Context:**': 'CONTEXT',
+                '**Constraints:**': 'CONSTRAINTS',
+                '**Task:**': 'TASK',
+                '**Output Format:**': 'OUTPUT_FORMAT',
+                '**Quality Rubric:**': 'QUALITY_RUBRIC',
+                '**Cost Guardrails:**': 'COST_GUARDRAILS',
+                '**Acceptance Criteria:**': 'ACCEPTANCE_CRITERIA'
+            };
+            
+            // Create a regex pattern to match all headers
+            const headerPattern = new RegExp(
+                `(${Object.keys(markdownHeaderMap).map(h => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+                'g'
+            );
+            
+            // Find all header positions
+            const matches: Array<{ header: string; index: number }> = [];
+            let match;
+            while ((match = headerPattern.exec(systemPrompt)) !== null) {
+                matches.push({ header: match[0], index: match.index });
+            }
+            
+            // Extract content for each section
+            for (let i = 0; i < matches.length; i++) {
+                const currentMatch = matches[i];
+                const nextMatch = matches[i + 1];
+                
+                const contentStart = currentMatch.index + currentMatch.header.length;
+                let contentEnd = nextMatch ? nextMatch.index : systemPrompt.length;
+                
+                // Also check for Key Enhancements, Platform Tip, or Compliance Statement
+                const remainingText = systemPrompt.substring(contentStart);
+                const keyEnhancementsIndex = remainingText.toLowerCase().indexOf('**key enhancements:**');
+                const platformTipIndex = remainingText.toLowerCase().indexOf('**platform tip:**');
+                const complianceIndex = remainingText.toLowerCase().indexOf('**compliance statement:**');
+                
+                const endIndex = Math.min(
+                    keyEnhancementsIndex !== -1 ? contentStart + keyEnhancementsIndex : Infinity,
+                    platformTipIndex !== -1 ? contentStart + platformTipIndex : Infinity,
+                    complianceIndex !== -1 ? contentStart + complianceIndex : Infinity,
+                    contentEnd
+                );
+                
+                let content = systemPrompt.substring(contentStart, endIndex).trim();
+                
+                // Remove any markdown headers that might be at the start or end
+                content = content.replace(/^\*\*[^*]+\*\*:\s*/, '').trim();
+                content = content.replace(/\s*\*\*[^*]+\*\*:\s*$/, '').trim();
+                // Remove any markdown headers embedded in the middle
+                content = content.replace(/\*\*[^*]+\*\*:\s*/g, '').trim();
+                
+                if (content && markdownHeaderMap[currentMatch.header]) {
+                    const sectionKey = markdownHeaderMap[currentMatch.header];
+                    parsedSections[sectionKey] = content;
+                }
+            }
+        } else {
+            // Parse plain text headers
+            for (let i = 0; i < sectionHeaders.length; i++) {
+                const header = sectionHeaders[i];
+                const nextHeader = i < sectionHeaders.length - 1 ? sectionHeaders[i + 1] : null;
+                
+                const headerRegex = new RegExp(`\\b${header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i');
+                const headerMatch = systemPrompt.match(headerRegex);
+                
+                if (headerMatch && headerMatch.index !== undefined) {
+                    const headerIndex = headerMatch.index;
+                    const afterHeader = systemPrompt.substring(headerIndex + headerMatch[0].length).trim();
+                    let content = '';
+                    
+                    if (nextHeader) {
+                        const nextHeaderRegex = new RegExp(`\\b${nextHeader.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i');
+                        const nextMatch = systemPrompt.substring(headerIndex + headerMatch[0].length).match(nextHeaderRegex);
+                        if (nextMatch && nextMatch.index !== undefined) {
+                            content = systemPrompt.substring(headerIndex + headerMatch[0].length, headerIndex + headerMatch[0].length + nextMatch.index).trim();
+                        } else {
+                            content = afterHeader;
+                        }
+                    } else {
+                        // For the last section, look for common ending markers
+                        const keyEnhancementsIndex = systemPrompt.toLowerCase().indexOf('key enhancements:', headerIndex);
+                        const platformTipIndex = systemPrompt.toLowerCase().indexOf('platform tip:', headerIndex);
+                        const complianceIndex = systemPrompt.toLowerCase().indexOf('compliance statement:', headerIndex);
+                        
+                        const endIndex = Math.min(
+                            keyEnhancementsIndex !== -1 ? keyEnhancementsIndex : Infinity,
+                            platformTipIndex !== -1 ? platformTipIndex : Infinity,
+                            complianceIndex !== -1 ? complianceIndex : Infinity
+                        );
+                        
+                        if (endIndex !== Infinity) {
+                            content = systemPrompt.substring(headerIndex + headerMatch[0].length, endIndex).trim();
+                        } else {
+                            content = afterHeader;
+                        }
+                    }
+                    
+                    if (content) {
+                        parsedSections[header.replace(':', '')] = content;
+                    }
+                }
+            }
+        }
+        
+        // If we didn't parse any sections, try a more aggressive approach
+        // Split by markdown headers directly
+        if (Object.keys(parsedSections).length === 0 && hasMarkdownHeaders) {
+            const markdownHeaderMap: Record<string, string> = {
+                '**Role:**': 'ROLE',
+                '**Objective:**': 'OBJECTIVE',
+                '**Context:**': 'CONTEXT',
+                '**Constraints:**': 'CONSTRAINTS',
+                '**Task:**': 'TASK',
+                '**Output Format:**': 'OUTPUT_FORMAT',
+                '**Quality Rubric:**': 'QUALITY_RUBRIC',
+                '**Cost Guardrails:**': 'COST_GUARDRAILS',
+                '**Acceptance Criteria:**': 'ACCEPTANCE_CRITERIA'
+            };
+            
+            // Try splitting by headers more aggressively
+            const headerPattern = new RegExp(
+                `(${Object.keys(markdownHeaderMap).map(h => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+                'gi'
+            );
+            
+            const parts = systemPrompt.split(headerPattern).filter(p => p.trim().length > 0);
+            
+            for (let i = 0; i < parts.length; i += 2) {
+                const header = parts[i];
+                const content = parts[i + 1] || '';
+                
+                if (markdownHeaderMap[header] && content.trim()) {
+                    parsedSections[markdownHeaderMap[header]] = content.trim();
+                }
+            }
+        }
+        
+        if (Object.keys(parsedSections).length > 0) {
+            sections.push('**System Prompt:**\n');
+            
+            const sectionOrder = ['ROLE', 'OBJECTIVE', 'CONTEXT', 'CONSTRAINTS', 'TASK', 
+                                 'OUTPUT_FORMAT', 'QUALITY_RUBRIC', 'COST_GUARDRAILS', 'ACCEPTANCE_CRITERIA'];
+            
+            const formatSectionName = (name: string): string => {
+                return name
+                    .split('_')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(' ');
+            };
+            
+            sectionOrder.forEach((sectionName, index) => {
+                if (parsedSections[sectionName]) {
+                    const humanReadableName = formatSectionName(sectionName);
+                    let content = parsedSections[sectionName].trim();
+                    
+                    // Remove any existing markdown formatting from content
+                    content = content.replace(/^\*\*[^*]+\*\*:\s*/, '');
+                    // Remove any trailing markdown headers that might have been captured
+                    content = content.replace(/\s*\*\*[^*]+\*\*:\s*$/, '');
+                    // Remove any markdown headers that might be embedded in the content
+                    content = content.replace(/\*\*[^*]+\*\*:\s*/g, '');
+                    
+                    // Format content with proper line breaks and indentation
+                    let formattedContent = '';
+                    
+                    // Check if content contains semicolons (likely a list)
+                    const hasSemicolons = content.includes(';');
+                    
+                    if (hasSemicolons) {
+                        // Split by semicolons and format as bulleted list
+                        const parts = content
+                            .split(';')
+                            .map(p => p.trim())
+                            .filter(p => p.length > 0 && !p.match(/^\*\*/)); // Filter out any stray headers
+                        
+                        if (parts.length > 1) {
+                            formattedContent = parts
+                                .map((part: string) => {
+                                    let trimmed = part.trim();
+                                    // Remove leading "and" or "or" if present
+                                    trimmed = trimmed.replace(/^(and|or)\s+/i, '');
+                                    // Remove any markdown headers that might be in the content
+                                    trimmed = trimmed.replace(/\*\*[^*]+\*\*:\s*/g, '');
+                                    // Capitalize first letter if needed
+                                    if (trimmed.length > 0 && !trimmed[0].match(/[A-Z]/)) {
+                                        trimmed = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+                                    }
+                                    // Ensure it ends with proper punctuation
+                                    if (!trimmed.match(/[.!?]$/)) {
+                                        trimmed = trimmed + '.';
+                                    }
+                                    return `  • ${trimmed}`;
+                                })
+                                .join('\n');
+                        } else {
+                            formattedContent = content;
+                        }
+                    } else {
+                        // Single paragraph - use as is
+                        formattedContent = content;
+                    }
+                    
+                    // Header on one line, content on the next line
+                    // Add double newline before each section except the first one for proper paragraph separation
+                    if (index > 0) {
+                        sections.push(`\n\n**${humanReadableName}:**\n${formattedContent}`);
+                    } else {
+                        sections.push(`**${humanReadableName}:**\n${formattedContent}`);
+                    }
+                }
+            });
+        }
+    }
+    
+    // Handle key enhancements
+    if (keyEnhancements) {
+        let enhancements: string[] = [];
+        
+        if (Array.isArray(keyEnhancements)) {
+            enhancements = keyEnhancements;
+        } else if (typeof keyEnhancements === 'string') {
+            try {
+                const parsed = JSON.parse(keyEnhancements);
+                if (Array.isArray(parsed)) {
+                    enhancements = parsed;
+                }
+            } catch (e) {
+                const trimmed = keyEnhancements.trim();
+                if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+                    const arrayContent = trimmed.slice(1, -1).trim();
+                    if (arrayContent.length > 0) {
+                        const items: string[] = [];
+                        let currentItem = '';
+                        let inQuotes = false;
+                        let quoteChar = '';
+                        
+                        for (let i = 0; i < arrayContent.length; i++) {
+                            const char = arrayContent[i];
+                            
+                            if ((char === '"' || char === "'") && (i === 0 || arrayContent[i - 1] !== '\\')) {
+                                if (!inQuotes) {
+                                    inQuotes = true;
+                                    quoteChar = char;
+                                } else if (char === quoteChar) {
+                                    inQuotes = false;
+                                    quoteChar = '';
+                                }
+                                currentItem += char;
+                            } else if (char === ',' && !inQuotes) {
+                                const trimmedItem = currentItem.trim();
+                                if (trimmedItem.length > 0) {
+                                    const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
+                                    if (cleaned.length > 0) {
+                                        enhancements.push(cleaned);
+                                    }
+                                }
+                                currentItem = '';
+                            } else {
+                                currentItem += char;
+                            }
+                        }
+                        
+                        if (currentItem.trim().length > 0) {
+                            const trimmedItem = currentItem.trim();
+                            const cleaned = trimmedItem.replace(/^['"]|['"]$/g, '').trim();
+                            if (cleaned.length > 0) {
+                                enhancements.push(cleaned);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (enhancements.length > 0) {
+            sections.push('**Key Enhancements:**\n');
+            sections.push(enhancements.map((enhancement: string) => `  • ${enhancement}`).join('\n'));
+            sections.push('');
+        }
+    }
+    
+    if (platformTip) {
+        sections.push('**Platform Tip:**\n');
+        sections.push(`  ${platformTip}`);
+        sections.push('');
+    }
+    
+    if (complianceStatement) {
+        sections.push('**Compliance Statement:**\n');
+        sections.push(`  ${complianceStatement}`);
+    }
+    
+    // Join sections with newlines - blank lines are already added between sections
+    return sections.join('\n');
+};
+
+/**
  * Formats a message based on its role
  */
 export const formatMessage = (role: string, content: string): string => {
