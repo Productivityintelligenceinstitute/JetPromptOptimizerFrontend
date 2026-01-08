@@ -22,9 +22,6 @@ export const ingestFile = async (file: File): Promise<IngestFileResponse> => {
             "/ingest-file",
             formData,
             {
-                headers: {
-                    "Content-Type": "multipart/form-data",
-                },
                 timeout: 120000, // 2 minutes timeout for large files
             }
         );

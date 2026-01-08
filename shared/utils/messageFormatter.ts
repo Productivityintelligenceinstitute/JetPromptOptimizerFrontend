@@ -16,22 +16,152 @@ const isEmpty = (value: string): boolean => {
 };
 
 /**
+ * Dynamically formats any object or array structure recursively
+ * Handles nested objects, arrays, and primitive values
+ */
+function formatDynamicValue(value: any, indent: number = 0): string {
+    const indentStr = '  '.repeat(indent);
+    
+    if (value === null || value === undefined) {
+        return 'null';
+    }
+    
+    if (typeof value === 'string') {
+        return value;
+    }
+    
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+    
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            return '';
+        }
+        
+        // Check if array contains simple strings/numbers
+        if (value.every(item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')) {
+            return value.map(item => `${indentStr}• ${item}`).join('\n');
+        }
+        
+        // Array contains objects or complex structures
+        return value.map((item, index) => {
+            const formatted = formatDynamicValue(item, indent + 1);
+            return `${indentStr}${index + 1}. ${formatted}`;
+        }).join('\n');
+    }
+    
+    if (typeof value === 'object') {
+        const entries = Object.entries(value);
+        if (entries.length === 0) {
+            return '';
+        }
+        
+        return entries.map(([key, val]) => {
+            const formattedKey = key.split('_').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+            
+            if (Array.isArray(val)) {
+                if (val.length === 0) {
+                    return '';
+                }
+                // Special handling for arrays with [score, reason] format
+                if (val.length === 2 && typeof val[0] === 'string' && typeof val[1] === 'string') {
+                    return `${indentStr}**${formattedKey}:** ${val[0]} - ${val[1]}`;
+                }
+                // Array of strings
+                if (val.every(item => typeof item === 'string')) {
+                    const items = val.map(item => `${indentStr}  • ${item}`).join('\n');
+                    return `${indentStr}**${formattedKey}:**\n${items}`;
+                }
+                // Complex array
+                const items = val.map((item, idx) => {
+                    const formatted = formatDynamicValue(item, indent + 1);
+                    return `${indentStr}  ${idx + 1}. ${formatted}`;
+                }).join('\n');
+                return `${indentStr}**${formattedKey}:**\n${items}`;
+            }
+            
+            if (typeof val === 'object' && val !== null) {
+                const nested = formatDynamicValue(val, indent + 1);
+                return `${indentStr}**${formattedKey}:**\n${nested}`;
+            }
+            
+            // Primitive value (string, number, boolean)
+            if (typeof val === 'string' && val.length > 100) {
+                // For long strings (like exemplar_rewrite), preserve line breaks
+                const lines = val.split('\n').map(line => line.trim()).filter(line => line);
+                if (lines.length > 1) {
+                    return `${indentStr}**${formattedKey}:**\n${lines.map(line => `${indentStr}  ${line}`).join('\n')}`;
+                }
+            }
+            return `${indentStr}**${formattedKey}:** ${val}`;
+        }).filter(line => line.trim()).join('\n');
+    }
+    
+    return String(value);
+}
+
+/**
  * Parses assistant message content and formats it nicely
  * Only includes sections that have actual data
  */
 /**
  * Formats master level response - handles questions and final answers
+ * Can handle both string responses (with "Final Answer:") and direct JSON objects
  */
-function formatMasterLevelResponse(content: string): string {
-    const finalAnswerMatch = content.match(/Final Answer:\s*(\{[\s\S]*\})/);
-    if (finalAnswerMatch) {
+export function formatMasterLevelResponse(content: string | any): string {
+    // If content is already an object, use it directly
+    let parsed: any = null;
+    let contentStr = '';
+    
+    if (typeof content === 'object' && content !== null) {
+        // Direct JSON object from API
+        parsed = content;
+    } else {
+        // String response - try to extract JSON from "Final Answer:" or parse as JSON
+        contentStr = typeof content === 'string' ? content : String(content);
+        
+        const finalAnswerMatch = contentStr.match(/Final Answer:\s*(\{[\s\S]*\})/);
+        if (finalAnswerMatch) {
+            try {
+                const jsonStr = finalAnswerMatch[1];
+                parsed = JSON.parse(jsonStr);
+            } catch (e) {
+                // If parsing fails, try parsing the whole content as JSON
+                try {
+                    parsed = JSON.parse(contentStr);
+                } catch {
+                    return contentStr;
+                }
+            }
+        } else {
+            // No "Final Answer:" prefix - try parsing the whole content as JSON
+            try {
+                parsed = JSON.parse(contentStr);
+            } catch {
+                // Not valid JSON, return as-is
+                return contentStr;
+            }
+        }
+    }
+    
+    if (parsed) {
         try {
-            const jsonStr = finalAnswerMatch[1];
-            const parsed = JSON.parse(jsonStr);
             
             if (parsed.questions && Array.isArray(parsed.questions)) {
                 const formattedQuestions = parsed.questions
-                    .map((q: string, index: number) => `${index + 1}. ${q}`)
+                    .map((q: string, index: number) => {
+                        // Check if question already starts with a number pattern (e.g., "1. ", "2. ", etc.)
+                        const numberPattern = /^\d+\.\s*/;
+                        if (numberPattern.test(q.trim())) {
+                            // Question already has a number, use it as-is
+                            return q.trim();
+                        }
+                        // Question doesn't have a number, add one
+                        return `${index + 1}. ${q.trim()}`;
+                    })
                     .join('\n');
                 
                 let formatted = '**Clarification Questions:**\n\n';
@@ -65,11 +195,79 @@ function formatMasterLevelResponse(content: string): string {
             
             if (parsed.master_prompt) {
                 let formatted = '**Master-Level Optimized Prompt:**\n\n';
-                formatted += parsed.master_prompt;
-                if (parsed.evaluation) {
-                    formatted += '\n\n**Evaluation:**\n';
-                    formatted += parsed.evaluation;
+                
+                // Handle master_prompt as object or string
+                if (typeof parsed.master_prompt === 'object' && parsed.master_prompt !== null) {
+                    const mp = parsed.master_prompt;
+                    if (mp.role) formatted += `**Role:**\n${mp.role}\n\n`;
+                    if (mp.objective) formatted += `**Objective:**\n${mp.objective}\n\n`;
+                    if (mp.context) formatted += `**Context:**\n${mp.context}\n\n`;
+                    if (mp.constraints) {
+                        // Format constraints with better readability
+                        const constraints = mp.constraints;
+                        // Check if it contains comma-separated items
+                        if (constraints.includes(',') && constraints.split(',').length > 2) {
+                            formatted += `**Constraints:**\n`;
+                            constraints.split(',').forEach((constraint: string) => {
+                                const trimmed = constraint.trim();
+                                if (trimmed) formatted += `• ${trimmed}\n`;
+                            });
+                            formatted += '\n';
+                        } else {
+                            formatted += `**Constraints:**\n${constraints}\n\n`;
+                        }
+                    }
+                    if (mp.task) formatted += `**Task:**\n${mp.task}\n\n`;
+                    if (mp.output_format) formatted += `**Output Format:**\n${mp.output_format}\n\n`;
+                    if (mp.quality_rubric) formatted += `**Quality Rubric:**\n${mp.quality_rubric}\n\n`;
+                    if (mp.cost_guardrails) formatted += `**Cost Guardrails:**\n${mp.cost_guardrails}\n\n`;
+                    if (mp.acceptance_criteria) formatted += `**Acceptance Criteria:**\n${mp.acceptance_criteria}\n\n`;
+                } else if (typeof parsed.master_prompt === 'string') {
+                    formatted += parsed.master_prompt;
                 }
+                
+                if (parsed.evaluation) {
+                    formatted += '\n\n**Evaluation:**\n\n';
+                    
+                    // Handle evaluation as object or string
+                    if (typeof parsed.evaluation === 'object' && parsed.evaluation !== null) {
+                        // Use dynamic formatter to handle any structure
+                        const formattedEval = formatDynamicValue(parsed.evaluation, 0);
+                        if (formattedEval) {
+                            formatted += formattedEval;
+                        } else {
+                            // Fallback: if dynamic formatter returns empty, try to stringify
+                            formatted += JSON.stringify(parsed.evaluation, null, 2);
+                        }
+                    } else if (typeof parsed.evaluation === 'string') {
+                        // Check if string contains [object Object] - try to extract from raw content
+                        if (parsed.evaluation.includes('[object Object]')) {
+                            // Try to extract and parse evaluation JSON from the original content
+                            const evalMatch = contentStr.match(/"evaluation"\s*:\s*(\{[\s\S]*?\})(?:\s*[,}])/);
+                            if (evalMatch) {
+                                try {
+                                    const evalObj = JSON.parse(evalMatch[1]);
+                                    const formattedEval = formatDynamicValue(evalObj, 0);
+                                    if (formattedEval) {
+                                        formatted += formattedEval;
+                                    } else {
+                                        formatted += parsed.evaluation;
+                                    }
+                                } catch {
+                                    formatted += parsed.evaluation;
+                                }
+                            } else {
+                                formatted += parsed.evaluation;
+                            }
+                        } else {
+                            formatted += parsed.evaluation;
+                        }
+                    } else {
+                        // Handle other types (number, boolean, etc.)
+                        formatted += String(parsed.evaluation);
+                    }
+                }
+                
                 if (parsed.note) {
                     formatted += '\n\n';
                     formatted += `*${parsed.note}*`;
@@ -77,13 +275,18 @@ function formatMasterLevelResponse(content: string): string {
                 return formatted;
             }
             
+            // Handle simple responses with just a note
+            if (parsed.note && Object.keys(parsed).length === 1) {
+                return `*${parsed.note}*`;
+            }
+            
             return `**Response:**\n\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``;
         } catch (e) {
-            return content;
+            return contentStr || (typeof content === 'string' ? content : JSON.stringify(content));
         }
     }
     
-    return content;
+    return contentStr || (typeof content === 'string' ? content : JSON.stringify(content));
 }
 
 export const formatAssistantMessage = (content: string): string => {
@@ -102,6 +305,93 @@ export const formatAssistantMessage = (content: string): string => {
     try {
         const parsed = JSON.parse(content);
         if (typeof parsed === 'object' && parsed !== null) {
+            // Handle simple note-only responses
+            if (parsed.note && Object.keys(parsed).length === 1) {
+                return `*${parsed.note}*`;
+            }
+            
+            // Handle master_prompt if present (even without "Final Answer:" prefix)
+            if (parsed.master_prompt) {
+                let formatted = '**Master-Level Optimized Prompt:**\n\n';
+                
+                // Handle master_prompt as object or string
+                if (typeof parsed.master_prompt === 'object' && parsed.master_prompt !== null) {
+                    const mp = parsed.master_prompt;
+                    if (mp.role) formatted += `**Role:**\n${mp.role}\n\n`;
+                    if (mp.objective) formatted += `**Objective:**\n${mp.objective}\n\n`;
+                    if (mp.context) formatted += `**Context:**\n${mp.context}\n\n`;
+                    if (mp.constraints) {
+                        const constraints = mp.constraints;
+                        if (constraints.includes(',') && constraints.split(',').length > 2) {
+                            formatted += `**Constraints:**\n`;
+                            constraints.split(',').forEach((constraint: string) => {
+                                const trimmed = constraint.trim();
+                                if (trimmed) formatted += `• ${trimmed}\n`;
+                            });
+                            formatted += '\n';
+                        } else {
+                            formatted += `**Constraints:**\n${constraints}\n\n`;
+                        }
+                    }
+                    if (mp.task) formatted += `**Task:**\n${mp.task}\n\n`;
+                    if (mp.output_format) formatted += `**Output Format:**\n${mp.output_format}\n\n`;
+                    if (mp.quality_rubric) formatted += `**Quality Rubric:**\n${mp.quality_rubric}\n\n`;
+                    if (mp.cost_guardrails) formatted += `**Cost Guardrails:**\n${mp.cost_guardrails}\n\n`;
+                    if (mp.acceptance_criteria) formatted += `**Acceptance Criteria:**\n${mp.acceptance_criteria}\n\n`;
+                } else if (typeof parsed.master_prompt === 'string') {
+                    formatted += parsed.master_prompt;
+                }
+                
+                if (parsed.evaluation) {
+                    formatted += '\n\n**Evaluation:**\n\n';
+                    
+                    // Handle evaluation as object or string
+                    if (typeof parsed.evaluation === 'object' && parsed.evaluation !== null) {
+                        // Use dynamic formatter to handle any structure
+                        const formattedEval = formatDynamicValue(parsed.evaluation, 0);
+                        if (formattedEval) {
+                            formatted += formattedEval;
+                        } else {
+                            // Fallback: if dynamic formatter returns empty, try to stringify
+                            formatted += JSON.stringify(parsed.evaluation, null, 2);
+                        }
+                    } else if (typeof parsed.evaluation === 'string') {
+                        // Check if string contains [object Object] - try to extract from raw content
+                        if (parsed.evaluation.includes('[object Object]')) {
+                            // Try to extract and parse evaluation JSON from the original content
+                            const evalMatch = contentStr.match(/"evaluation"\s*:\s*(\{[\s\S]*?\})(?:\s*[,}])/);
+                            if (evalMatch) {
+                                try {
+                                    const evalObj = JSON.parse(evalMatch[1]);
+                                    const formattedEval = formatDynamicValue(evalObj, 0);
+                                    if (formattedEval) {
+                                        formatted += formattedEval;
+                                    } else {
+                                        formatted += parsed.evaluation;
+                                    }
+                                } catch {
+                                    formatted += parsed.evaluation;
+                                }
+                            } else {
+                                formatted += parsed.evaluation;
+                            }
+                        } else {
+                            formatted += parsed.evaluation;
+                        }
+                    } else {
+                        // Handle other types (number, boolean, etc.)
+                        formatted += String(parsed.evaluation);
+                    }
+                }
+                
+                if (parsed.note) {
+                    formatted += '\n\n';
+                    formatted += `*${parsed.note}*`;
+                }
+                
+                return formatted;
+            }
+            
             const sections: string[] = [];
             
             if (parsed.system_prompt) {

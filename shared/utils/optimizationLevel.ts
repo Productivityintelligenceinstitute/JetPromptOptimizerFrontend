@@ -40,19 +40,40 @@ export const OPTIMIZATION_LEVELS: Record<OptimizationLevel, OptimizationLevelInf
 
 /**
  * Detects the optimization level from a prompt string
+ * Works with both raw and formatted content
  */
 export function detectOptimizationLevel(prompt: string): OptimizationLevelInfo {
   const lowerPrompt = prompt.toLowerCase();
   
-  if (lowerPrompt.includes('system prompt') || lowerPrompt.includes('system-level')) {
+  // System level detection
+  if (lowerPrompt.includes('system prompt') || lowerPrompt.includes('system-level') || 
+      lowerPrompt.includes('**system prompt:**') || lowerPrompt.includes('optimized system prompt')) {
     return OPTIMIZATION_LEVELS.system;
   }
   
-  if (lowerPrompt.includes('mastery level') || lowerPrompt.includes('master level') || lowerPrompt.includes('master-level')) {
+  // Mastery level detection - check for multiple patterns
+  // Raw content patterns
+  if (lowerPrompt.includes('mastery level') || lowerPrompt.includes('master level') || 
+      lowerPrompt.includes('master-level') || lowerPrompt.includes('master_level')) {
     return OPTIMIZATION_LEVELS.mastery;
   }
   
-  if (lowerPrompt.includes('structured level') || lowerPrompt.includes('structured-level') || lowerPrompt.includes('struct')) {
+  // Formatted content patterns (from formatted messages)
+  if (lowerPrompt.includes('clarification questions') || 
+      lowerPrompt.includes('final answer:') ||
+      lowerPrompt.includes('**master-level optimized prompt:**') ||
+      lowerPrompt.includes('**updated prompt:**') ||
+      lowerPrompt.includes('**evaluation:**') ||
+      lowerPrompt.includes('**exemplar rewrite:**') ||
+      // Check for JSON structure that indicates mastery level
+      (lowerPrompt.includes('"questions"') && lowerPrompt.includes('"note"')) ||
+      (lowerPrompt.includes('"master_prompt"') && lowerPrompt.includes('"evaluation"'))) {
+    return OPTIMIZATION_LEVELS.mastery;
+  }
+  
+  // Structured level detection
+  if (lowerPrompt.includes('structured level') || lowerPrompt.includes('structured-level') || 
+      lowerPrompt.includes('struct') || lowerPrompt.includes('**structured')) {
     return OPTIMIZATION_LEVELS.structured;
   }
   

@@ -10,7 +10,7 @@ import { useAuth } from '@/shared/context/AuthContext';
 import { getChatMessages } from '@/shared/api/chat';
 import { getMyLibrary } from '@/shared/api/library';
 import { logError } from '@/shared/utils/errorHandler';
-import { formatMessage, formatAssistantMessage, formatSystemLevelResponse } from '@/shared/utils/messageFormatter';
+import { formatMessage, formatAssistantMessage, formatSystemLevelResponse, formatMasterLevelResponse } from '@/shared/utils/messageFormatter';
 import { ApiError } from '@/shared/types/errors';
 import UpgradeRequiredModal from '@/shared/components/Modal/UpgradeRequiredModal';
 import DailyLimitExceededModal from '@/shared/components/Modal/DailyLimitExceededModal';
@@ -21,75 +21,6 @@ import { generateOptimizationLevelMessage } from '@/shared/utils/optimizationLev
 import { addToLibrary } from '@/shared/api/library';
 import { deleteChat } from '@/shared/api/chat';
 import { useRouter } from 'next/navigation';
-
-/**
- * Formats master level response - handles questions and final answers
- */
-function formatMasterLevelResponse(response: any): string {
-    const content = typeof response === 'string' ? response : String(response);
-    
-    const finalAnswerMatch = content.match(/Final Answer:\s*(\{[\s\S]*\})/);
-    if (finalAnswerMatch) {
-        try {
-            const jsonStr = finalAnswerMatch[1];
-            const parsed = JSON.parse(jsonStr);
-            
-            if (parsed.questions && Array.isArray(parsed.questions)) {
-                const formattedQuestions = parsed.questions
-                    .map((q: string, index: number) => `${index + 1}. ${q}`)
-                    .join('\n');
-                
-                let formatted = '**Clarification Questions:**\n\n';
-                formatted += formattedQuestions;
-                formatted += '\n\n';
-                
-                if (parsed.note) {
-                    formatted += `*${parsed.note}*`;
-                }
-                
-                return formatted;
-            }
-            
-            if (parsed.summary && parsed.updated_prompt) {
-                let formatted = '';
-                if (parsed.summary) {
-                    formatted += '**Summary:**\n';
-                    formatted += parsed.summary;
-                    formatted += '\n\n';
-                }
-                if (parsed.updated_prompt) {
-                    formatted += '**Updated Prompt:**\n';
-                    formatted += parsed.updated_prompt;
-                    formatted += '\n\n';
-                }
-                if (parsed.request) {
-                    formatted += `*${parsed.request}*`;
-                }
-                return formatted;
-            }
-            
-            if (parsed.master_prompt) {
-                let formatted = '**Master-Level Optimized Prompt:**\n\n';
-                formatted += parsed.master_prompt;
-                if (parsed.evaluation) {
-                    formatted += '\n\n**Evaluation:**\n';
-                    formatted += parsed.evaluation;
-                }
-                if (parsed.note) {
-                    formatted += '\n\n';
-                    formatted += `*${parsed.note}*`;
-                }
-                return formatted;
-            }
-            
-            return `**Response:**\n\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``;
-        } catch (e) {
-            return content;
-        }
-    }
-    
-    return content;
-}
 
 export default function ChatSessionPage() {
     const params = useParams();
@@ -239,6 +170,20 @@ export default function ChatSessionPage() {
                         };
                     });
                 setMessages(formattedMessages);
+                
+                // Detect level from raw content (before formatting) if we don't have a level yet
+                // Find the first assistant message in chronological order (before reverse)
+                if (!chatLevel && response.items.length > 0) {
+                    // Find first assistant message in original order (not reversed)
+                    const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
+                    if (firstAssistant && firstAssistant.content) {
+                        // Use raw content for detection (before formatting)
+                        const detected = detectOptimizationLevel(firstAssistant.content);
+                        if (detected && detected.level !== 'basic') {
+                            setChatLevel(detected);
+                        }
+                    }
+                }
             } catch (error) {
                 logError(error, 'ChatSessionPage.loadMessages');
                 // Don't clear messages on error, just log it

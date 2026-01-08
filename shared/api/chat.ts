@@ -17,7 +17,10 @@ export const optimizeStructuredPrompt = async (
 ): Promise<OptimizationResponse> => {
     const response = await apiClient.post<OptimizationResponse>(
         "/optimize-prompt/structure-level-optimization",
-        data
+        data,
+        {
+            timeout: 60000, // 1 minute timeout for structured level
+        }
     );
     return response.data;
 };
@@ -27,7 +30,10 @@ export const optimizeMasterPrompt = async (
 ): Promise<OptimizationResponse> => {
     const response = await apiClient.post<OptimizationResponse>(
         "/optimize-prompt/master-level-optimization",
-        data
+        data,
+        {
+            timeout: 180000, // 3 minutes timeout for mastery level (involves multiple LLM calls)
+        }
     );
     return response.data;
 };
@@ -37,7 +43,10 @@ export const optimizeSystemPrompt = async (
 ): Promise<OptimizationResponse> => {
     const response = await apiClient.post<OptimizationResponse>(
         "/optimize-prompt/system-level-optimization",
-        data
+        data,
+        {
+            timeout: 180000, // 3 minutes timeout for system level
+        }
     );
     return response.data;
 };

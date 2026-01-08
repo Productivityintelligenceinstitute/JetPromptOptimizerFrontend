@@ -132,7 +132,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                         <div
                             className={`group relative max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
                                 ? 'bg-gray-100 text-gray-900'
-                                : 'bg-transparent text-gray-900'
+                                : 'bg-transparent text-gray-900 pr-12'
                                 }`}
                         >
                             <div className="prose prose-sm max-w-none">
