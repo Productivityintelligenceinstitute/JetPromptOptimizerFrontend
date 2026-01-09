@@ -122,14 +122,14 @@ export default function AdminKbPage() {
                     </div>
 
                     <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 lg:p-8">
-                        <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                            Ingest new knowledge
-                        </h2>
-                        <p className="text-sm text-gray-600 mb-4">
+                            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                                Ingest new knowledge
+                            </h2>
+                            <p className="text-sm text-gray-600 mb-4">
                             Drag and drop files or connect a source. Supported formats: TXT, MD, JSON, DOCX, and PDF.
-                        </p>
+                            </p>
 
-                        <div className="mt-4">
+                            <div className="mt-4">
                                 <div
                                     ref={dropZoneRef}
                                     className={`flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center cursor-pointer transition-colors ${
@@ -209,7 +209,7 @@ export default function AdminKbPage() {
                                                     Upload failed
                                                 </p>
                                                 <p className="text-red-800">
-                                                    {uploadError}
+                                        {uploadError}
                                                 </p>
                                             </div>
                                         </div>
@@ -230,16 +230,16 @@ export default function AdminKbPage() {
                                                 </p>
                                                 <p className="text-green-800">
                                                     <span className="font-semibold">{lastResult.file}</span> has been processed and ingested into the knowledge base with{" "}
-                                                    <span className="font-semibold">{lastResult.chunks}</span> chunks and{" "}
-                                                    <span className="font-semibold">{lastResult.vectors}</span> vectors.
+                                        <span className="font-semibold">{lastResult.chunks}</span> chunks and{" "}
+                                        <span className="font-semibold">{lastResult.vectors}</span> vectors.
                                                 </p>
                                             </div>
                                         </div>
                                     </div>
                                 )}
-                        </div>
+                            </div>
 
-                        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                                     <h3 className="text-sm font-semibold text-gray-900 mb-1">
                                         Chunking & Embeddings
@@ -258,7 +258,7 @@ export default function AdminKbPage() {
                                         packages, teams, or customers.
                                     </p>
                                 </div>
-                        </div>
+                            </div>
                     </section>
                 </main>
             </div>

@@ -163,8 +163,8 @@ export default function ChatSessionPage() {
                         const isShared = !!backendId && sharedMessageIds.has(backendId);
                         return {
                             id: backendId || crypto.randomUUID(),
-                            role: msg.role as 'user' | 'assistant',
-                            content: formatMessage(msg.role, msg.content),
+                        role: msg.role as 'user' | 'assistant',
+                        content: formatMessage(msg.role, msg.content),
                             messageId: backendId,
                             isShared,
                         };
@@ -312,8 +312,8 @@ export default function ChatSessionPage() {
                                     const isShared = !!backendId && sharedMessageIds.has(backendId);
                                     return {
                                         id: backendId || crypto.randomUUID(),
-                                        role: msg.role as 'user' | 'assistant',
-                                        content: formatMessage(msg.role, msg.content),
+                                    role: msg.role as 'user' | 'assistant',
+                                    content: formatMessage(msg.role, msg.content),
                                         messageId: backendId,
                                         isShared,
                                     };

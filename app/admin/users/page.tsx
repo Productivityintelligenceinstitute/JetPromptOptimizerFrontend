@@ -48,19 +48,19 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
     const params = new URLSearchParams(searchParams.toString());
     params.set("page", String(page));
     params.set("size", String(itemsPerPage));
     if (search) params.set("q", search);
     else params.delete("q");
     router.push(`/admin/users?${params.toString()}`);
-  };
+    };
 
-  const handleItemsPerPageChange = (newItemsPerPage: number) => {
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1);
+    const handleItemsPerPageChange = (newItemsPerPage: number) => {
+        setItemsPerPage(newItemsPerPage);
+        setCurrentPage(1);
     const params = new URLSearchParams(searchParams.toString());
     params.set("page", "1");
     params.set("size", String(newItemsPerPage));
@@ -105,24 +105,24 @@ export default function AdminUsersPage() {
     [itemsPerPage, totalItems]
   );
 
-  return (
-    <AdminGuard>
-      <div className="min-h-screen bg-gray-50">
-        <AdminNavbar />
+    return (
+        <AdminGuard>
+            <div className="min-h-screen bg-gray-50">
+                <AdminNavbar />
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h1 className="text-3xl font-semibold text-[#335386] mb-2">
+                        <div>
+                            <h1 className="text-3xl font-semibold text-[#335386] mb-2">
                   Manage Users
-                </h1>
+                            </h1>
                 <p className="text-gray-600">
                   View all users, update roles, and inspect account details.
-                </p>
-              </div>
+                            </p>
+                        </div>
               <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
-                <input
-                  type="text"
+                            <input
+                                type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Search by email or name..."
@@ -135,8 +135,8 @@ export default function AdminUsersPage() {
                   Search
                 </button>
               </form>
-            </div>
-          </div>
+                        </div>
+                    </div>
 
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -149,8 +149,8 @@ export default function AdminUsersPage() {
               <div className="text-center">
                 <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent" />
                 <p className="mt-4 text-sm text-gray-600">Loading users...</p>
-              </div>
-            </div>
+                            </div>
+                        </div>
           ) : users.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
               <p className="text-gray-600 mb-2">No users found.</p>
@@ -159,25 +159,25 @@ export default function AdminUsersPage() {
             <>
               <div className="overflow-x-auto bg-white rounded-xl border border-gray-200">
                 <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
+                                <thead className="bg-gray-50">
+                                    <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Email
-                      </th>
+                                        </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Name
-                      </th>
+                                        </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Role
-                      </th>
+                                            Role
+                                        </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Created At
-                      </th>
+                                        </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Firebase UID
-                      </th>
-                    </tr>
-                  </thead>
+                                        </th>
+                                    </tr>
+                                </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {users.map((u) => {
                       const isSelf = user && u.user_id === user.user_id;
@@ -186,25 +186,25 @@ export default function AdminUsersPage() {
                           <td className="px-4 py-3 text-sm text-gray-900">{u.email}</td>
                           <td className="px-4 py-3 text-sm text-gray-700">
                             {u.full_name || "—"}
-                          </td>
+                                            </td>
                           <td className="px-4 py-3 text-sm">
                             <div className="flex items-center gap-2">
-                              <select
+                                                <select
                                 value={u.role}
-                                onChange={(e) =>
+                                                    onChange={(e) =>
                                   !isSelf && handleRoleChange(u.email, e.target.value)
-                                }
+                                                    }
                                 disabled={!!isSelf}
                                 className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-jet-blue focus:border-jet-blue disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-                              >
+                                                >
                                 <option value="user">user</option>
                                 <option value="admin">admin</option>
-                              </select>
+                                                </select>
                               <button
                                 onClick={() => !isSelf && handleRoleSave(u.email, u.role)}
                                 disabled={!!isSelf || roleUpdatingEmail === u.email}
                                 className="px-2 py-1 text-xs rounded-md border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                              >
+                                                >
                                 {isSelf
                                   ? "You"
                                   : roleUpdatingEmail === u.email
@@ -212,21 +212,21 @@ export default function AdminUsersPage() {
                                   : "Save"}
                               </button>
                             </div>
-                          </td>
+                                            </td>
                           <td className="px-4 py-3 text-sm text-gray-500">
                             {u.created_at
                               ? new Date(u.created_at).toLocaleDateString()
                               : "—"}
-                          </td>
+                                            </td>
                           <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">
                             {u.firebase_uid || "—"}
-                          </td>
-                        </tr>
+                                            </td>
+                                        </tr>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
+                                </tbody>
+                            </table>
+                        </div>
 
               <div className="mt-6 flex items-center justify-between">
                 <div className="text-sm text-gray-600">
@@ -239,52 +239,52 @@ export default function AdminUsersPage() {
                     {Math.min(currentPage * itemsPerPage, totalItems)}
                   </span>{" "}
                   of <span className="font-semibold">{totalItems}</span> users
-                </div>
+                                        </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 text-sm">
                     <span>Rows per page:</span>
-                    <select
+                                            <select
                       value={itemsPerPage}
-                      onChange={(e) =>
+                                                onChange={(e) =>
                         handleItemsPerPageChange(Number(e.target.value))
-                      }
+                                                }
                       className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-jet-blue focus:border-jet-blue"
-                    >
+                                            >
                       <option value={10}>10</option>
                       <option value={25}>25</option>
                       <option value={50}>50</option>
-                    </select>
-                  </div>
+                                            </select>
+                                        </div>
                   <div className="flex items-center gap-2">
-                    <button
+                                        <button
                       onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
                       className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                    >
+                                        >
                       Previous
-                    </button>
+                                        </button>
                     <span className="text-sm text-gray-600">
                       Page <span className="font-semibold">{currentPage}</span> of{" "}
                       <span className="font-semibold">{totalPages}</span>
                     </span>
-                    <button
+                                    <button
                       onClick={() =>
                         currentPage < totalPages && handlePageChange(currentPage + 1)
                       }
                       disabled={currentPage === totalPages}
                       className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-                    >
+                                    >
                       Next
-                    </button>
-                  </div>
-                </div>
-              </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
             </>
-          )}
-        </main>
-      </div>
-    </AdminGuard>
-  );
+                    )}
+                </main>
+            </div>
+        </AdminGuard>
+    );
 }
 
 

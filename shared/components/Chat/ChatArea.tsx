@@ -194,14 +194,14 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                         </button>
                                     ) : (
                                         onShare && (
-                                            <button
-                                                onClick={() => handleShare(message.content, message.id)}
-                                                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
-                                                title="Share to library"
-                                                aria-label="Share to library"
-                                            >
-                                                <ShareIcon className="w-4 h-4" />
-                                            </button>
+                                        <button
+                                            onClick={() => handleShare(message.content, message.id)}
+                                            className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+                                            title="Share to library"
+                                            aria-label="Share to library"
+                                        >
+                                            <ShareIcon className="w-4 h-4" />
+                                        </button>
                                         )
                                     )}
                                     <button

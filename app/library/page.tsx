@@ -137,12 +137,12 @@ export default function LibraryPage() {
                                         Search
                                     </button>
                                 </form>
-                                <button
+                            <button
                                     onClick={() => router.push('/chat')}
-                                    className="px-4 py-2 bg-jet-blue text-white rounded-lg hover:bg-jet-blue/90 transition-colors cursor-pointer"
-                                >
-                                    Create New Prompt
-                                </button>
+                                className="px-4 py-2 bg-jet-blue text-white rounded-lg hover:bg-jet-blue/90 transition-colors cursor-pointer"
+                            >
+                                Create New Prompt
+                            </button>
                             </div>
                         </div>
                     </div>
@@ -286,7 +286,7 @@ export default function LibraryPage() {
                                                                 }
                                                                 return <span key={j}>{part}</span>;
                                                             })}
-                                                        </p>
+                                                </p>
                                                     );
                                                 })}
                                             </div>

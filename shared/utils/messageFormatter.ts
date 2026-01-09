@@ -275,6 +275,72 @@ export function formatMasterLevelResponse(content: string | any): string {
                 return formatted;
             }
             
+            // Handle sample_prompts - can be array, string, or object
+            if (parsed.sample_prompts) {
+                let formatted = '**Sample Prompts:**\n\n';
+                
+                if (Array.isArray(parsed.sample_prompts)) {
+                    // Format as numbered list
+                    formatted += parsed.sample_prompts
+                        .map((prompt: any, index: number) => {
+                            if (typeof prompt === 'string') {
+                                return `${index + 1}. ${prompt.trim()}`;
+                            } else if (typeof prompt === 'object' && prompt !== null) {
+                                // If it's an object, try to extract text or format it
+                                if (prompt.text || prompt.prompt || prompt.content) {
+                                    return `${index + 1}. ${(prompt.text || prompt.prompt || prompt.content).trim()}`;
+                                }
+                                return `${index + 1}. ${JSON.stringify(prompt)}`;
+                            }
+                            return `${index + 1}. ${String(prompt)}`;
+                        })
+                        .join('\n');
+                } else if (typeof parsed.sample_prompts === 'string') {
+                    // Single string prompt
+                    formatted += `1. ${parsed.sample_prompts.trim()}`;
+                } else if (typeof parsed.sample_prompts === 'object' && parsed.sample_prompts !== null) {
+                    // Single object prompt
+                    if (parsed.sample_prompts.text || parsed.sample_prompts.prompt || parsed.sample_prompts.content) {
+                        formatted += `1. ${(parsed.sample_prompts.text || parsed.sample_prompts.prompt || parsed.sample_prompts.content).trim()}`;
+                    } else {
+                        formatted += `1. ${JSON.stringify(parsed.sample_prompts)}`;
+                    }
+                } else {
+                    // Fallback for other types
+                    formatted += `1. ${String(parsed.sample_prompts)}`;
+                }
+                
+                if (parsed.note) {
+                    formatted += '\n\n';
+                    formatted += `*${parsed.note}*`;
+                }
+                
+                return formatted;
+            }
+            
+            // Handle follow_up_questions
+            if (parsed.follow_up_questions && Array.isArray(parsed.follow_up_questions)) {
+                const formattedQuestions = parsed.follow_up_questions
+                    .map((q: string, index: number) => {
+                        const numberPattern = /^\d+\.\s*/;
+                        if (numberPattern.test(q.trim())) {
+                            return q.trim();
+                        }
+                        return `${index + 1}. ${q.trim()}`;
+                    })
+                    .join('\n');
+                
+                let formatted = '**Follow-up Questions:**\n\n';
+                formatted += formattedQuestions;
+                formatted += '\n\n';
+                
+                if (parsed.note) {
+                    formatted += `*${parsed.note}*`;
+                }
+                
+                return formatted;
+            }
+            
             // Handle simple responses with just a note
             if (parsed.note && Object.keys(parsed).length === 1) {
                 return `*${parsed.note}*`;
@@ -359,7 +425,7 @@ export const formatAssistantMessage = (content: string): string => {
                         // Check if string contains [object Object] - try to extract from raw content
                         if (parsed.evaluation.includes('[object Object]')) {
                             // Try to extract and parse evaluation JSON from the original content
-                            const evalMatch = contentStr.match(/"evaluation"\s*:\s*(\{[\s\S]*?\})(?:\s*[,}])/);
+                            const evalMatch = content.match(/"evaluation"\s*:\s*(\{[\s\S]*?\})(?:\s*[,}])/);
                             if (evalMatch) {
                                 try {
                                     const evalObj = JSON.parse(evalMatch[1]);
@@ -545,15 +611,96 @@ export const formatAssistantMessage = (content: string): string => {
             }
             
             if (parsed.optimized_prompt) {
-                sections.push(`**Optimized Prompt:**\n${parsed.optimized_prompt}`);
+                let optimizedPromptText = '';
+
+                const formatOptimizedItem = (item: any): string => {
+                    if (!item) return '';
+
+                    // If it's already a string, use as-is
+                    if (typeof item === 'string') {
+                        return item;
+                    }
+
+                    // If it's an object, try to format known fields nicely
+                    if (typeof item === 'object') {
+                        const parts: string[] = [];
+
+                        if (item.role) {
+                            parts.push(`**Role:** ${item.role}`);
+                        }
+                        if (item.objective) {
+                            parts.push(`**Objective:** ${item.objective}`);
+                        }
+                        if (item.context) {
+                            parts.push(`**Context:** ${item.context}`);
+                        }
+                        if (item.task) {
+                            parts.push(`**Task:** ${item.task}`);
+                        }
+                        if (item.constraints) {
+                            parts.push(`**Constraints:** ${item.constraints}`);
+                        }
+
+                        // If we collected any structured parts, join them; otherwise fall back to JSON
+                        if (parts.length > 0) {
+                            return parts.join('\n');
+                        }
+
+                        return JSON.stringify(item, null, 2);
+                    }
+
+                    // Fallback for other primitive types
+                    return String(item);
+                };
+
+                const op = parsed.optimized_prompt;
+
+                if (Array.isArray(op)) {
+                    optimizedPromptText = op
+                        .map((item: any) => formatOptimizedItem(item))
+                        .filter((txt: string) => txt && txt.trim().length > 0)
+                        .join('\n\n');
+                } else {
+                    optimizedPromptText = formatOptimizedItem(op);
+                }
+
+                sections.push(`**Optimized Prompt:**\n${optimizedPromptText}`);
+            }
+
+            const formatBulletItems = (value: any): string[] => {
+                if (!value) return [];
+
+                // Already an array
+                if (Array.isArray(value)) {
+                    return value.map((item: any) => {
+                        if (typeof item === 'string') return item;
+                        if (typeof item === 'object') return JSON.stringify(item, null, 2);
+                        return String(item);
+                    });
+                }
+
+                // Single string
+                if (typeof value === 'string') {
+                    return [value];
+                }
+
+                // Single object
+                if (typeof value === 'object') {
+                    return [JSON.stringify(value, null, 2)];
+                }
+
+                // Primitive fallback
+                return [String(value)];
+            };
+            
+            const changesMadeItems = formatBulletItems(parsed.changes_made);
+            if (changesMadeItems.length > 0) {
+                sections.push(`**Changes Made:**\n${changesMadeItems.map((change: string) => `• ${change}`).join('\n')}`);
             }
             
-            if (parsed.changes_made && Array.isArray(parsed.changes_made) && parsed.changes_made.length > 0) {
-                sections.push(`**Changes Made:**\n${parsed.changes_made.map((change: string) => `• ${change}`).join('\n')}`);
-            }
-            
-            if (parsed.techniques_applied && Array.isArray(parsed.techniques_applied) && parsed.techniques_applied.length > 0) {
-                sections.push(`**Techniques Applied:**\n${parsed.techniques_applied.map((tech: string) => `• ${tech}`).join('\n')}`);
+            const techniquesAppliedItems = formatBulletItems(parsed.techniques_applied);
+            if (techniquesAppliedItems.length > 0) {
+                sections.push(`**Techniques Applied:**\n${techniquesAppliedItems.map((tech: string) => `• ${tech}`).join('\n')}`);
             }
             
             if (parsed.pro_tip) {
@@ -562,6 +709,49 @@ export const formatAssistantMessage = (content: string): string => {
             
             if (parsed.share_message) {
                 sections.push(parsed.share_message);
+            }
+            
+            // Handle sample_prompts - can be array, string, or object
+            if (parsed.sample_prompts) {
+                let samplePromptsText = '**Sample Prompts:**\n\n';
+                
+                if (Array.isArray(parsed.sample_prompts)) {
+                    // Format as numbered list
+                    samplePromptsText += parsed.sample_prompts
+                        .map((prompt: any, index: number) => {
+                            if (typeof prompt === 'string') {
+                                return `${index + 1}. ${prompt.trim()}`;
+                            } else if (typeof prompt === 'object' && prompt !== null) {
+                                // If it's an object, try to extract text or format it
+                                if (prompt.text || prompt.prompt || prompt.content) {
+                                    return `${index + 1}. ${(prompt.text || prompt.prompt || prompt.content).trim()}`;
+                                }
+                                return `${index + 1}. ${JSON.stringify(prompt)}`;
+                            }
+                            return `${index + 1}. ${String(prompt)}`;
+                        })
+                        .join('\n');
+                } else if (typeof parsed.sample_prompts === 'string') {
+                    // Single string prompt
+                    samplePromptsText += `1. ${parsed.sample_prompts.trim()}`;
+                } else if (typeof parsed.sample_prompts === 'object' && parsed.sample_prompts !== null) {
+                    // Single object prompt
+                    if (parsed.sample_prompts.text || parsed.sample_prompts.prompt || parsed.sample_prompts.content) {
+                        samplePromptsText += `1. ${(parsed.sample_prompts.text || parsed.sample_prompts.prompt || parsed.sample_prompts.content).trim()}`;
+                    } else {
+                        samplePromptsText += `1. ${JSON.stringify(parsed.sample_prompts)}`;
+                    }
+                } else {
+                    // Fallback for other types
+                    samplePromptsText += `1. ${String(parsed.sample_prompts)}`;
+                }
+                
+                sections.push(samplePromptsText);
+            }
+            
+            // Handle note field (can appear with sample_prompts or alone)
+            if (parsed.note) {
+                sections.push(`*${parsed.note}*`);
             }
             
             if (sections.length > 0) {
