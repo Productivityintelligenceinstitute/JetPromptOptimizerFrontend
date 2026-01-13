@@ -16,6 +16,145 @@ const isEmpty = (value: string): boolean => {
 };
 
 /**
+ * Parses a Python dict string to JavaScript object
+ * Handles single quotes, Python booleans/null, and arrays
+ * Uses context-aware parsing to handle apostrophes in strings
+ */
+function parsePythonDict(pythonStr: string): any {
+    if (!pythonStr || typeof pythonStr !== 'string') {
+        return null;
+    }
+    
+    // Replace Python True/False/None with JavaScript equivalents first
+    let jsonStr = pythonStr.trim()
+        .replace(/\bTrue\b/g, 'true')
+        .replace(/\bFalse\b/g, 'false')
+        .replace(/\bNone\b/g, 'null');
+    
+    // Use context-aware character-by-character parsing
+    // Track brackets/braces to understand structure context
+    let result = '';
+    let inString = false;
+    let bracketDepth = 0; // Track [ depth
+    let braceDepth = 0;   // Track { depth
+    let parenDepth = 0;   // Track ( depth
+    
+    for (let i = 0; i < jsonStr.length; i++) {
+        const char = jsonStr[i];
+        const prevChar = i > 0 ? jsonStr[i - 1] : '';
+        const nextChar = i < jsonStr.length - 1 ? jsonStr[i + 1] : '';
+        const nextNextChar = i < jsonStr.length - 2 ? jsonStr[i + 2] : '';
+        
+        // Track bracket/brace depth (when not in string)
+        if (!inString) {
+            if (char === '[') bracketDepth++;
+            else if (char === ']') bracketDepth--;
+            else if (char === '{') braceDepth++;
+            else if (char === '}') braceDepth--;
+            else if (char === '(') parenDepth++;
+            else if (char === ')') parenDepth--;
+        }
+        
+        if (!inString) {
+            // Not in a string
+            if (char === "'") {
+                // Check if this starts a string
+                // String starts after: : [ { ( , space or at start
+                const canStartString = 
+                    prevChar === ':' || prevChar === '[' || prevChar === '{' || 
+                    prevChar === '(' || prevChar === ',' || prevChar === ' ' || 
+                    i === 0 || prevChar === '';
+                
+                if (canStartString) {
+                    result += '"';
+                    inString = true;
+                } else {
+                    result += char;
+                }
+            } else {
+                result += char;
+            }
+        } else {
+            // Inside a string
+            if (char === "'") {
+                // Check if this ends the string by looking ahead
+                // If next char is a delimiter, this is the end
+                // If next char is a letter/digit and then we see another quote followed by delimiter, 
+                // then this quote is an apostrophe
+                const isDelimiter = (c: string) => c === ':' || c === ']' || c === '}' || c === ')' || c === ',' || c === ' ' || c === '';
+                
+                if (isDelimiter(nextChar) && prevChar !== '\\') {
+                    // This is the end of the string
+                    result += '"';
+                    inString = false;
+                } else if (nextChar && /[a-zA-Z0-9]/.test(nextChar)) {
+                    // Next char is alphanumeric - this might be an apostrophe (like "user's")
+                    // Look ahead to see if there's another quote followed by a delimiter
+                    let foundClosingQuote = false;
+                    for (let j = i + 1; j < jsonStr.length; j++) {
+                        if (jsonStr[j] === "'" && jsonStr[j - 1] !== '\\') {
+                            // Found a potential closing quote
+                            const charAfterQuote = j < jsonStr.length - 1 ? jsonStr[j + 1] : '';
+                            if (isDelimiter(charAfterQuote)) {
+                                // This is indeed an apostrophe, the next quote is the real end
+                                foundClosingQuote = true;
+                                break;
+                            }
+                        }
+                        // Stop looking if we hit a delimiter without finding a quote
+                        if (isDelimiter(jsonStr[j]) && jsonStr[j] !== ' ') {
+                            break;
+                        }
+                    }
+                    
+                    if (foundClosingQuote) {
+                        // This is an apostrophe, keep it
+                        result += char;
+                    } else if (isDelimiter(nextChar)) {
+                        // No closing quote found, this must be the end
+                        result += '"';
+                        inString = false;
+                    } else {
+                        // Not sure, treat as apostrophe to be safe
+                        result += char;
+                    }
+                } else {
+                    // Not a delimiter and not alphanumeric - likely the end
+                    if (prevChar !== '\\' && (isDelimiter(nextChar) || i === jsonStr.length - 1)) {
+                        result += '"';
+                        inString = false;
+                    } else {
+                        result += char;
+                    }
+                }
+            } else if (char === '\\' && nextChar === "'") {
+                // Escaped quote
+                result += '\\"';
+                i++; // Skip next char
+            } else {
+                result += char;
+            }
+        }
+    }
+    
+    // Try to parse the converted string
+    try {
+        const parsed = JSON.parse(result);
+        return parsed;
+    } catch (e) {
+        // If parsing fails, try a fallback: simple replacement
+        // This might work if there are no apostrophes in strings
+        try {
+            let fallback = jsonStr.replace(/'/g, '"');
+            const parsed = JSON.parse(fallback);
+            return parsed;
+        } catch (e2) {
+            return null;
+        }
+    }
+}
+
+/**
  * Dynamically formats any object or array structure recursively
  * Handles nested objects, arrays, and primitive values
  */
@@ -66,9 +205,9 @@ function formatDynamicValue(value: any, indent: number = 0): string {
                 if (val.length === 0) {
                     return '';
                 }
-                // Special handling for arrays with [score, reason] format
-                if (val.length === 2 && typeof val[0] === 'string' && typeof val[1] === 'string') {
-                    return `${indentStr}**${formattedKey}:** ${val[0]} - ${val[1]}`;
+                // Special handling for arrays with [score, reason] format - score can be number or string
+                if (val.length === 2 && (typeof val[0] === 'number' || typeof val[0] === 'string') && typeof val[1] === 'string') {
+                    return `${indentStr}**${formattedKey}:**\n${indentStr}  Score: ${val[0]}\n${indentStr}  ${val[1]}`;
                 }
                 // Array of strings
                 if (val.every(item => typeof item === 'string')) {
@@ -149,18 +288,49 @@ export function formatMasterLevelResponse(content: string | any): string {
     
     if (parsed) {
         try {
+            // Handle final_answer wrapper structure
+            let questions = parsed.questions;
+            let note = parsed.note;
             
-            if (parsed.questions && Array.isArray(parsed.questions)) {
-                const formattedQuestions = parsed.questions
-                    .map((q: string, index: number) => {
-                        // Check if question already starts with a number pattern (e.g., "1. ", "2. ", etc.)
-                        const numberPattern = /^\d+\.\s*/;
-                        if (numberPattern.test(q.trim())) {
-                            // Question already has a number, use it as-is
-                            return q.trim();
+            if (parsed.final_answer) {
+                questions = parsed.final_answer.questions;
+                note = parsed.final_answer.note || parsed.note;
+            }
+            
+            if (questions && Array.isArray(questions)) {
+                const formattedQuestions = questions
+                    .map((q: any, index: number) => {
+                        let questionText = '';
+                        let questionId = index + 1;
+                        
+                        // Handle new format: object with id and question
+                        if (typeof q === 'object' && q !== null) {
+                            if (q.question) {
+                                questionText = q.question.trim();
+                                // Use the id from the object if available, otherwise use index + 1
+                                if (q.id !== undefined && q.id !== null) {
+                                    questionId = q.id;
+                                }
+                            } else if (q.text) {
+                                questionText = q.text.trim();
+                            } else {
+                                // Fallback: try to stringify the object
+                                questionText = JSON.stringify(q);
+                            }
+                        } else if (typeof q === 'string') {
+                            questionText = q.trim();
+                            // Check if question already starts with a number pattern
+                            const numberPattern = /^\d+\.\s*/;
+                            if (numberPattern.test(questionText)) {
+                                // Question already has a number, use it as-is
+                                return questionText;
+                            }
+                        } else {
+                            questionText = String(q).trim();
                         }
-                        // Question doesn't have a number, add one
-                        return `${index + 1}. ${q.trim()}`;
+                        
+                        // Format as numbered line (no extra bullet)
+                        return `${questionId}. ${questionText}`;
                     })
                     .join('\n');
                 
@@ -168,8 +338,8 @@ export function formatMasterLevelResponse(content: string | any): string {
                 formatted += formattedQuestions;
                 formatted += '\n\n';
                 
-                if (parsed.note) {
-                    formatted += `*${parsed.note}*`;
+                if (note) {
+                    formatted += `*${note}*`;
                 }
                 
                 return formatted;
@@ -203,25 +373,45 @@ export function formatMasterLevelResponse(content: string | any): string {
                     if (mp.objective) formatted += `**Objective:**\n${mp.objective}\n\n`;
                     if (mp.context) formatted += `**Context:**\n${mp.context}\n\n`;
                     if (mp.constraints) {
-                        // Format constraints with better readability
-                        const constraints = mp.constraints;
-                        // Check if it contains comma-separated items
-                        if (constraints.includes(',') && constraints.split(',').length > 2) {
-                            formatted += `**Constraints:**\n`;
-                            constraints.split(',').forEach((constraint: string) => {
-                                const trimmed = constraint.trim();
-                                if (trimmed) formatted += `• ${trimmed}\n`;
+                        formatted += `**Constraints:**\n`;
+                        if (Array.isArray(mp.constraints)) {
+                            mp.constraints.forEach((constraint: any) => {
+                                formatted += `• ${String(constraint).trim()}\n`;
                             });
-                            formatted += '\n';
+                        } else if (typeof mp.constraints === 'string') {
+                            // Check if it contains comma-separated items
+                            if (mp.constraints.includes(',') && mp.constraints.split(',').length > 2) {
+                                mp.constraints.split(',').forEach((constraint: string) => {
+                                    const trimmed = constraint.trim();
+                                    if (trimmed) formatted += `• ${trimmed}\n`;
+                                });
+                            } else {
+                                formatted += `${mp.constraints}\n`;
+                            }
                         } else {
-                            formatted += `**Constraints:**\n${constraints}\n\n`;
+                            formatted += `${String(mp.constraints)}\n`;
                         }
+                        formatted += '\n';
                     }
-                    if (mp.task) formatted += `**Task:**\n${mp.task}\n\n`;
+                    if (mp.task) {
+                        formatted += `**Task:**\n`;
+                        if (Array.isArray(mp.task)) {
+                            mp.task.forEach((task: any) => {
+                                formatted += `• ${String(task).trim()}\n`;
+                            });
+                        } else {
+                            formatted += `${String(mp.task)}\n`;
+                        }
+                        formatted += '\n';
+                    }
                     if (mp.output_format) formatted += `**Output Format:**\n${mp.output_format}\n\n`;
                     if (mp.quality_rubric) formatted += `**Quality Rubric:**\n${mp.quality_rubric}\n\n`;
                     if (mp.cost_guardrails) formatted += `**Cost Guardrails:**\n${mp.cost_guardrails}\n\n`;
                     if (mp.acceptance_criteria) formatted += `**Acceptance Criteria:**\n${mp.acceptance_criteria}\n\n`;
+                    if (mp.evaluate) formatted += `**Evaluation:**\n${mp.evaluate}\n\n`;
+                    if (mp.iterate) formatted += `**Iteration:**\n${mp.iterate}\n\n`;
+                    if (mp.summary) formatted += `**Summary:**\n${mp.summary}\n\n`;
+                    if (mp.share_message) formatted += `*${mp.share_message}*\n\n`;
                 } else if (typeof parsed.master_prompt === 'string') {
                     formatted += parsed.master_prompt;
                 }
@@ -231,13 +421,235 @@ export function formatMasterLevelResponse(content: string | any): string {
                     
                     // Handle evaluation as object or string
                     if (typeof parsed.evaluation === 'object' && parsed.evaluation !== null) {
-                        // Use dynamic formatter to handle any structure
-                        const formattedEval = formatDynamicValue(parsed.evaluation, 0);
-                        if (formattedEval) {
-                            formatted += formattedEval;
-                        } else {
-                            // Fallback: if dynamic formatter returns empty, try to stringify
-                            formatted += JSON.stringify(parsed.evaluation, null, 2);
+                        const evaluationObj = parsed.evaluation;
+                        
+                        // Format scores section
+                        if (evaluationObj.scores && typeof evaluationObj.scores === 'object') {
+                            formatted += '**Scores:**\n\n';
+                            Object.entries(evaluationObj.scores).forEach(([key, scoreVal]: [string, any]) => {
+                                const formattedKey = key.split('_').map(word => 
+                                    word.charAt(0).toUpperCase() + word.slice(1)
+                                ).join(' ');
+                                if (Array.isArray(scoreVal) && scoreVal.length === 2) {
+                                    formatted += `**${formattedKey}:**\n`;
+                                    formatted += `  Score: ${scoreVal[0]}\n`;
+                                    formatted += `  ${scoreVal[1]}\n\n`;
+                                } else {
+                                    formatted += `**${formattedKey}:** ${formatDynamicValue(scoreVal, 1)}\n\n`;
+                                }
+                            });
+                        }
+                        
+                        // Format issues_found
+                        if (evaluationObj.issues_found && Array.isArray(evaluationObj.issues_found)) {
+                            formatted += '**Issues Found:**\n\n';
+                            evaluationObj.issues_found.forEach((issue: any) => {
+                                formatted += `• ${String(issue)}\n`;
+                            });
+                            formatted += '\n';
+                        }
+                        
+                        // Format suggestions
+                        if (evaluationObj.suggestions && Array.isArray(evaluationObj.suggestions)) {
+                            formatted += '**Suggestions:**\n\n';
+                            evaluationObj.suggestions.forEach((suggestion: any) => {
+                                formatted += `• ${String(suggestion)}\n`;
+                            });
+                            formatted += '\n';
+                        }
+                        
+                        // Format exemplar_rewrite - it might be a Python dict string or already an object
+                        if (evaluationObj.exemplar_rewrite) {
+                            formatted += '**Exemplar Rewrite:**\n\n';
+                            
+                            let parsedExemplar: any = null;
+                            
+                            // Check if it's already an object
+                            if (typeof evaluationObj.exemplar_rewrite === 'object' && evaluationObj.exemplar_rewrite !== null) {
+                                parsedExemplar = evaluationObj.exemplar_rewrite;
+                            } else {
+                                // It's a string, try to parse it as Python dict or JSON
+                                const exemplarStr = String(evaluationObj.exemplar_rewrite);
+                                
+                                // First try parsing as JSON (in case it's already JSON)
+                                try {
+                                    parsedExemplar = JSON.parse(exemplarStr);
+                                } catch {
+                                    // If JSON parsing fails, try Python dict parsing
+                                    parsedExemplar = parsePythonDict(exemplarStr);
+                                }
+                            }
+                            
+                            if (parsedExemplar && typeof parsedExemplar === 'object' && parsedExemplar !== null) {
+                                // Define preferred field order for better readability
+                                const fieldOrder = ['message_type', 'role', 'objective', 'constraints', 'task', 'output_format', 'evaluation', 'iteration', 'summary', 'share_message'];
+                                const remainingFields = new Set(Object.keys(parsedExemplar));
+                                
+                                // Format fields in preferred order
+                                fieldOrder.forEach((fieldName) => {
+                                    if (parsedExemplar[fieldName] !== undefined) {
+                                        remainingFields.delete(fieldName);
+                                        const formattedKey = fieldName.split('_').map(word => 
+                                            word.charAt(0).toUpperCase() + word.slice(1)
+                                        ).join(' ');
+                                        const val = parsedExemplar[fieldName];
+                                        
+                                        if (Array.isArray(val)) {
+                                            formatted += `**${formattedKey}:**\n`;
+                                            val.forEach((item: any) => {
+                                                formatted += `  • ${String(item)}\n`;
+                                            });
+                                            formatted += '\n';
+                                        } else if (typeof val === 'string' && val.length > 0) {
+                                            formatted += `**${formattedKey}:**\n${val}\n\n`;
+                                        } else if (val !== null && val !== undefined) {
+                                            formatted += `**${formattedKey}:** ${String(val)}\n\n`;
+                                        }
+                                    }
+                                });
+                                
+                                // Format any remaining fields that weren't in the preferred order
+                                remainingFields.forEach((fieldName) => {
+                                    const formattedKey = fieldName.split('_').map(word => 
+                                        word.charAt(0).toUpperCase() + word.slice(1)
+                                    ).join(' ');
+                                    const val = parsedExemplar[fieldName];
+                                    
+                                    if (Array.isArray(val)) {
+                                        formatted += `**${formattedKey}:**\n`;
+                                        val.forEach((item: any) => {
+                                            formatted += `  • ${String(item)}\n`;
+                                        });
+                                        formatted += '\n';
+                                    } else if (typeof val === 'string' && val.length > 0) {
+                                        formatted += `**${formattedKey}:**\n${val}\n\n`;
+                                    } else if (val !== null && val !== undefined) {
+                                        formatted += `**${formattedKey}:** ${String(val)}\n\n`;
+                                    }
+                                });
+                            } else {
+                                // If parsing fails, try manual extraction using regex
+                                const exemplarStr = String(evaluationObj.exemplar_rewrite);
+                                
+                                // Try to manually extract key-value pairs using regex
+                                // This is a fallback for malformed Python dicts
+                                try {
+                                    // Extract fields using regex patterns
+                                    // Use a smarter approach: find the field, then extract until the next field or end
+                                    const extractField = (fieldName: string, allFields: string[]): string | string[] | null => {
+                                        const fieldPattern = new RegExp(`'${fieldName}'\\s*:\\s*`, 'g');
+                                        const match = fieldPattern.exec(exemplarStr);
+                                        
+                                        if (!match) return null;
+                                        
+                                        const startPos = match.index + match[0].length;
+                                        // Find the next field or end of dict
+                                        let endPos = exemplarStr.length;
+                                        for (const otherField of allFields) {
+                                            if (otherField !== fieldName) {
+                                                const nextFieldPattern = new RegExp(`'${otherField}'\\s*:`, 'g');
+                                                nextFieldPattern.lastIndex = startPos;
+                                                const nextMatch = nextFieldPattern.exec(exemplarStr);
+                                                if (nextMatch && nextMatch.index < endPos) {
+                                                    endPos = nextMatch.index;
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Also check for closing brace
+                                        const bracePos = exemplarStr.indexOf('}', startPos);
+                                        if (bracePos !== -1 && bracePos < endPos) {
+                                            endPos = bracePos;
+                                        }
+                                        
+                                        let valueStr = exemplarStr.substring(startPos, endPos).trim();
+                                        
+                                        // Check if it's an array
+                                        if (valueStr.startsWith('[') && valueStr.endsWith(']')) {
+                                            const items: string[] = [];
+                                            // Extract items from array, handling apostrophes
+                                            const arrayContent = valueStr.slice(1, -1);
+                                            let currentItem = '';
+                                            let inQuotes = false;
+                                            
+                                            for (let i = 0; i < arrayContent.length; i++) {
+                                                const char = arrayContent[i];
+                                                const nextChar = i < arrayContent.length - 1 ? arrayContent[i + 1] : '';
+                                                
+                                                if (!inQuotes && char === "'") {
+                                                    inQuotes = true;
+                                                } else if (inQuotes && char === "'" && (nextChar === ',' || nextChar === ']' || nextChar === ' ' || i === arrayContent.length - 1)) {
+                                                    // End of string
+                                                    items.push(currentItem.trim());
+                                                    currentItem = '';
+                                                    inQuotes = false;
+                                                    // Skip comma and space
+                                                    while (i < arrayContent.length - 1 && (arrayContent[i + 1] === ',' || arrayContent[i + 1] === ' ')) {
+                                                        i++;
+                                                    }
+                                                } else if (inQuotes) {
+                                                    currentItem += char;
+                                                }
+                                            }
+                                            if (currentItem.trim()) {
+                                                items.push(currentItem.trim());
+                                            }
+                                            return items.length > 0 ? items : null;
+                                        } else if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
+                                            // Single string value - remove quotes, handling apostrophes
+                                            return valueStr.slice(1, -1);
+                                        }
+                                        
+                                        return null;
+                                    };
+                                    
+                                    // Extract known fields
+                                    const fieldOrder = ['message_type', 'role', 'objective', 'constraints', 'task', 'output_format', 'evaluation', 'iteration', 'summary', 'share_message'];
+                                    let hasAnyField = false;
+                                    
+                                    fieldOrder.forEach((fieldName) => {
+                                        const value = extractField(fieldName, fieldOrder);
+                                        if (value !== null) {
+                                            hasAnyField = true;
+                                            const formattedKey = fieldName.split('_').map(word => 
+                                                word.charAt(0).toUpperCase() + word.slice(1)
+                                            ).join(' ');
+                                            
+                                            if (Array.isArray(value)) {
+                                                formatted += `**${formattedKey}:**\n`;
+                                                value.forEach((item: string) => {
+                                                    formatted += `  • ${item}\n`;
+                                                });
+                                                formatted += '\n';
+                                            } else {
+                                                formatted += `**${formattedKey}:**\n${value}\n\n`;
+                                            }
+                                        }
+                                    });
+                                    
+                                    if (!hasAnyField) {
+                                        // Manual extraction failed, show as code block
+                                        formatted += '```\n' + exemplarStr + '\n```\n';
+                                    }
+                                } catch {
+                                    // Manual extraction also failed, show as code block
+                                    formatted += '```\n' + exemplarStr + '\n```\n';
+                                }
+                            }
+                        }
+                        
+                        // If there are other fields not handled above, use dynamic formatter
+                        const handledKeys = ['scores', 'issues_found', 'suggestions', 'exemplar_rewrite'];
+                        const otherKeys = Object.keys(evaluationObj).filter(key => !handledKeys.includes(key));
+                        if (otherKeys.length > 0) {
+                            const otherEval: any = {};
+                            otherKeys.forEach(key => {
+                                otherEval[key] = evaluationObj[key];
+                            });
+                            const formattedOther = formatDynamicValue(otherEval, 0);
+                            if (formattedOther) {
+                                formatted += formattedOther;
+                            }
                         }
                     } else if (typeof parsed.evaluation === 'string') {
                         // Check if string contains [object Object] - try to extract from raw content
@@ -321,12 +733,38 @@ export function formatMasterLevelResponse(content: string | any): string {
             // Handle follow_up_questions
             if (parsed.follow_up_questions && Array.isArray(parsed.follow_up_questions)) {
                 const formattedQuestions = parsed.follow_up_questions
-                    .map((q: string, index: number) => {
-                        const numberPattern = /^\d+\.\s*/;
-                        if (numberPattern.test(q.trim())) {
-                            return q.trim();
+                    .map((q: any, index: number) => {
+                        let questionText = '';
+                        let questionId = index + 1;
+                        
+                        // Handle new format: object with id and question
+                        if (typeof q === 'object' && q !== null) {
+                            if (q.question) {
+                                questionText = q.question.trim();
+                                // Use the id from the object if available, otherwise use index + 1
+                                if (q.id !== undefined && q.id !== null) {
+                                    questionId = q.id;
+                                }
+                            } else if (q.text) {
+                                questionText = q.text.trim();
+                            } else {
+                                // Fallback: try to stringify the object
+                                questionText = JSON.stringify(q);
+                            }
+                        } else if (typeof q === 'string') {
+                            questionText = q.trim();
+                            // Check if question already starts with a number pattern
+                            const numberPattern = /^\d+\.\s*/;
+                            if (numberPattern.test(questionText)) {
+                                // Question already has a number, use it as-is
+                                return questionText;
+                            }
+                        } else {
+                            questionText = String(q).trim();
                         }
-                        return `${index + 1}. ${q.trim()}`;
+                        
+                        // Format as numbered line (no extra bullet)
+                        return `${questionId}. ${questionText}`;
                     })
                     .join('\n');
                 
@@ -360,6 +798,49 @@ export const formatAssistantMessage = (content: string): string => {
         return content || '';
     }
 
+    // Helper to format question arrays (supports objects with id/question or plain strings)
+    const formatQuestionsBlock = (
+        questions: any[],
+        note?: string,
+        header: string = 'Clarification Questions'
+    ): string => {
+        const formattedQuestions = questions
+            .map((q: any, index: number) => {
+                let questionText = '';
+                let questionId = index + 1;
+
+                if (typeof q === 'object' && q !== null) {
+                    if (q.question) {
+                        questionText = q.question.trim();
+                        if (q.id !== undefined && q.id !== null) {
+                            questionId = q.id;
+                        }
+                    } else if (q.text) {
+                        questionText = q.text.trim();
+                    } else {
+                        questionText = JSON.stringify(q);
+                    }
+                } else if (typeof q === 'string') {
+                    questionText = q.trim();
+                    const numberPattern = /^\d+\.\s*/;
+                    if (numberPattern.test(questionText)) {
+                        return questionText;
+                    }
+                } else {
+                    questionText = String(q).trim();
+                }
+
+                return `${questionId}. ${questionText}`;
+            })
+            .join('\n');
+
+        let formatted = `**${header}:**\n\n${formattedQuestions}`;
+        if (note) {
+            formatted += `\n\n*${note}*`;
+        }
+        return formatted;
+    };
+
     if (content.includes('Final Answer:')) {
         return formatMasterLevelResponse(content);
     }
@@ -374,6 +855,15 @@ export const formatAssistantMessage = (content: string): string => {
             // Handle simple note-only responses
             if (parsed.note && Object.keys(parsed).length === 1) {
                 return `*${parsed.note}*`;
+            }
+
+            // Handle final_answer wrapper with questions
+            if (parsed.final_answer && parsed.final_answer.questions && Array.isArray(parsed.final_answer.questions)) {
+                return formatQuestionsBlock(
+                    parsed.final_answer.questions,
+                    parsed.final_answer.note || parsed.note,
+                    'Clarification Questions'
+                );
             }
             
             // Handle master_prompt if present (even without "Final Answer:" prefix)

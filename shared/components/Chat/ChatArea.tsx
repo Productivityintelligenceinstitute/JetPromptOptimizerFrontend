@@ -135,7 +135,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                 : 'bg-transparent text-gray-900 pr-12'
                                 }`}
                         >
-                            <div className="prose prose-sm max-w-none">
+                            <div className="prose prose-sm max-w-none overflow-hidden">
                                 {message.content.split('\n').map((line, i, lines) => {
                                     // Skip empty lines
                                     if (!line.trim()) {
@@ -178,7 +178,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                             </div>
                             
                             {message.role === 'assistant' && (
-                                <div className="absolute top-2 right-2 flex items-center gap-1">
+                                <div className="absolute top-2 right-2 flex items-center gap-1 z-10 bg-white/80 backdrop-blur-sm rounded-md">
                                     {message.isShared ? (
                                         <button
                                             onClick={() =>
