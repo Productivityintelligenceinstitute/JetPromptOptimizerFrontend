@@ -78,6 +78,8 @@ export const getCurrentUser = async (): Promise<UserData> => {
                 shouldRetry: isRetryableError,
             }
         );
+
+        console.log('getCurrentUser response', response);   
         
         if (!response.data?.user_id) {
             throw new ApiError('Invalid user data received from server');
