@@ -342,6 +342,9 @@ export function formatMasterLevelResponse(content: string | any): string {
                     formatted += `*${note}*`;
                 }
                 
+                // Add share message to all mastery level responses
+                formatted += '\n\n---\n\n**💡 Want to share or reuse this prompt?**\n\n👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**\n\n*Jet helps professionals write, reason, and communicate better with AI.*';
+                
                 return formatted;
             }
             
@@ -360,9 +363,186 @@ export function formatMasterLevelResponse(content: string | any): string {
                 if (parsed.request) {
                     formatted += `*${parsed.request}*`;
                 }
+                
+                // Add share message to all mastery level responses
+                formatted += '\n\n---\n\n**💡 Want to share or reuse this prompt?**\n\n👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**\n\n*Jet helps professionals write, reason, and communicate better with AI.*';
+                
                 return formatted;
             }
             
+            // Handle new mastery level structure: overview, deconstruct, diagnose, develop, deliver
+            if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                let formatted = '';
+                
+                // Overview section
+                if (parsed.overview) {
+                    const overview = parsed.overview;
+                    formatted += '**Overview**\n\n';
+                    if (overview.summary) formatted += `${overview.summary}\n\n`;
+                    if (overview.framework) formatted += `**Framework:** ${overview.framework}\n\n`;
+                    if (overview.quality_model) formatted += `**Quality Model:** ${overview.quality_model}\n\n`;
+                }
+                
+                // Deconstruct section
+                if (parsed.deconstruct) {
+                    const deconstruct = parsed.deconstruct;
+                    formatted += '**Deconstruct**\n\n';
+                    if (deconstruct.intent) formatted += `**Intent:** ${deconstruct.intent}\n\n`;
+                    if (deconstruct.audience) formatted += `**Audience:** ${deconstruct.audience}\n\n`;
+                    if (deconstruct.constraints) {
+                        formatted += '**Constraints:**\n';
+                        const constraints = deconstruct.constraints;
+                        if (constraints.tone && Array.isArray(constraints.tone) && constraints.tone.length > 0) {
+                            formatted += `  Tone: ${constraints.tone.join(', ')}\n`;
+                        }
+                        if (constraints.style && Array.isArray(constraints.style) && constraints.style.length > 0) {
+                            formatted += `  Style: ${constraints.style.join(', ')}\n`;
+                        }
+                        if (constraints.technical_or_structural && Array.isArray(constraints.technical_or_structural) && constraints.technical_or_structural.length > 0) {
+                            formatted += `  Technical/Structural: ${constraints.technical_or_structural.join(', ')}\n`;
+                        }
+                        if (constraints.format) {
+                            const format = constraints.format;
+                            if (format.length) formatted += `  Length: ${format.length}\n`;
+                            if (format.structure) formatted += `  Structure: ${format.structure}\n`;
+                        }
+                        if (constraints.success_criteria) formatted += `  Success Criteria: ${constraints.success_criteria}\n`;
+                        formatted += '\n';
+                    }
+                }
+                
+                // Diagnose section
+                if (parsed.diagnose) {
+                    const diagnose = parsed.diagnose;
+                    formatted += '**Diagnose**\n\n';
+                    if (diagnose.reasoning_patterns && Array.isArray(diagnose.reasoning_patterns) && diagnose.reasoning_patterns.length > 0) {
+                        formatted += `**Reasoning Patterns:** ${diagnose.reasoning_patterns.join(', ')}\n\n`;
+                    }
+                    if (diagnose.style_or_domain_emulation && Array.isArray(diagnose.style_or_domain_emulation) && diagnose.style_or_domain_emulation.length > 0) {
+                        formatted += `**Style/Domain Emulation:** ${diagnose.style_or_domain_emulation.join(', ')}\n\n`;
+                    }
+                    if (diagnose.quality_targets) {
+                        formatted += '**Quality Targets:**\n';
+                        const targets = diagnose.quality_targets;
+                        if (targets.consistency !== undefined) formatted += `  Consistency: ${targets.consistency}\n`;
+                        if (targets.completeness !== undefined) formatted += `  Completeness: ${targets.completeness}\n`;
+                        if (targets.specificity !== undefined) formatted += `  Specificity: ${targets.specificity}\n`;
+                        if (targets.faithfulness !== undefined) formatted += `  Faithfulness: ${targets.faithfulness}\n`;
+                        if (targets.variance) formatted += `  Variance: ${targets.variance}\n`;
+                        formatted += '\n';
+                    }
+                }
+                
+                // Develop section - Optimized Prompt
+                if (parsed.develop && parsed.develop.optimized_prompt) {
+                    const develop = parsed.develop;
+                    formatted += '**Develop**\n\n';
+                    formatted += '**Optimized Prompt:**\n\n';
+                    
+                    const opt = develop.optimized_prompt;
+                    if (typeof opt === 'object' && opt !== null) {
+                        if (opt.role) formatted += `**Role:** ${opt.role}\n`;
+                        if (opt.objective) formatted += `**Objective:** ${opt.objective}\n`;
+                        if (opt.context) formatted += `**Context:** ${opt.context}\n`;
+                        if (opt.constraints && Array.isArray(opt.constraints)) {
+                            formatted += '**Constraints:**\n';
+                            opt.constraints.forEach((c: string) => formatted += `• ${c}\n`);
+                        } else if (opt.constraints) {
+                            formatted += `**Constraints:** ${opt.constraints}\n`;
+                        }
+                        if (opt.output_format) formatted += `**Output Format:** ${opt.output_format}\n`;
+                        if (opt.evaluation_metrics && Array.isArray(opt.evaluation_metrics)) {
+                            formatted += '**Evaluation Metrics:**\n';
+                            opt.evaluation_metrics.forEach((m: string) => formatted += `• ${m}\n`);
+                        }
+                        if (opt.stop_condition) formatted += `**Stop Condition:** ${opt.stop_condition}\n`;
+                    } else if (typeof opt === 'string') {
+                        formatted += `${opt}\n`;
+                    }
+                    formatted += '\n';
+                }
+                
+                // Deliver section
+                if (parsed.deliver) {
+                    const deliver = parsed.deliver;
+                    formatted += '**Deliver**\n\n';
+                    
+                    // Evaluation Rubric
+                    if (deliver.evaluation_rubric) {
+                        formatted += '**Evaluation Rubric:**\n\n';
+                        const rubric = deliver.evaluation_rubric;
+                        if (rubric.clarity && Array.isArray(rubric.clarity)) {
+                            formatted += `**Clarity:** ${rubric.clarity[0]} - ${rubric.clarity[1]}\n\n`;
+                        }
+                        if (rubric.completeness && Array.isArray(rubric.completeness)) {
+                            formatted += `**Completeness:** ${rubric.completeness[0]} - ${rubric.completeness[1]}\n\n`;
+                        }
+                        if (rubric.specificity && Array.isArray(rubric.specificity)) {
+                            formatted += `**Specificity:** ${rubric.specificity[0]} - ${rubric.specificity[1]}\n\n`;
+                        }
+                        if (rubric.faithfulness && Array.isArray(rubric.faithfulness)) {
+                            formatted += `**Faithfulness:** ${rubric.faithfulness[0]} - ${rubric.faithfulness[1]}\n\n`;
+                        }
+                    }
+                    
+                    // Pro Tips
+                    if (deliver.pro_tips && deliver.pro_tips.platform_specific) {
+                        formatted += '**Pro Tips:**\n\n';
+                        const proTips = deliver.pro_tips.platform_specific;
+                        if (proTips.gpt) formatted += `**GPT:** ${proTips.gpt}\n`;
+                        if (proTips.claude) formatted += `**Claude:** ${proTips.claude}\n`;
+                        if (proTips.gemini) formatted += `**Gemini:** ${proTips.gemini}\n`;
+                        formatted += '\n';
+                    }
+                    
+                    // Iteration Checklist
+                    if (deliver.iteration_checklist && Array.isArray(deliver.iteration_checklist)) {
+                        formatted += '**Iteration Checklist:**\n';
+                        deliver.iteration_checklist.forEach((item: string) => {
+                            formatted += `• ${item}\n`;
+                        });
+                        formatted += '\n';
+                    }
+                    
+                    // Example Output
+                    if (deliver.example_output) {
+                        if (deliver.example_output.included && deliver.example_output.content) {
+                            formatted += '**Example Output:**\n';
+                            formatted += `${deliver.example_output.content}\n\n`;
+                        }
+                    }
+                    
+                    // Key Improvements
+                    if (deliver.key_improvements && Array.isArray(deliver.key_improvements)) {
+                        formatted += '**Key Improvements:**\n';
+                        deliver.key_improvements.forEach((improvement: string) => {
+                            formatted += `• ${improvement}\n`;
+                        });
+                        formatted += '\n';
+                    }
+                    
+                    // Techniques Applied
+                    if (deliver.techniques_applied && Array.isArray(deliver.techniques_applied)) {
+                        formatted += '**Techniques Applied:**\n';
+                        deliver.techniques_applied.forEach((tech: string) => {
+                            formatted += `• ${tech}\n`;
+                        });
+                        formatted += '\n';
+                    }
+                    
+                    // Execution Pro Tip
+                    if (deliver.execution_pro_tip) {
+                        formatted += `**Execution Pro Tip:**\n${deliver.execution_pro_tip}\n`;
+                    }
+                }
+                
+                // Add share message to all mastery level responses
+                formatted += '\n\n---\n\n**💡 Want to share or reuse this prompt?**\n\n👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**\n\n*Jet helps professionals write, reason, and communicate better with AI.*';
+                
+                return formatted.trim();
+            }
+            
+            // Legacy format: master_prompt
             if (parsed.master_prompt) {
                 let formatted = '**Master-Level Optimized Prompt:**\n\n';
                 
@@ -684,6 +864,10 @@ export function formatMasterLevelResponse(content: string | any): string {
                     formatted += '\n\n';
                     formatted += `*${parsed.note}*`;
                 }
+                
+                // Add share message to all mastery level responses
+                formatted += '\n\n---\n\n**💡 Want to share or reuse this prompt?**\n\n👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**\n\n*Jet helps professionals write, reason, and communicate better with AI.*';
+                
                 return formatted;
             }
             
@@ -1108,26 +1292,26 @@ export const formatAssistantMessage = (content: string): string => {
 
                     // If it's already a string, use as-is
                     if (typeof item === 'string') {
-                        return item;
+                        return item.trim();
                     }
 
                     // If it's an object, try to format known fields nicely
                     if (typeof item === 'object') {
                         const parts: string[] = [];
 
-                        if (item.role) {
+                        if (item.role && String(item.role).trim()) {
                             parts.push(`**Role:** ${item.role}`);
                         }
-                        if (item.objective) {
+                        if (item.objective && String(item.objective).trim()) {
                             parts.push(`**Objective:** ${item.objective}`);
                         }
-                        if (item.context) {
+                        if (item.context && String(item.context).trim()) {
                             parts.push(`**Context:** ${item.context}`);
                         }
-                        if (item.task) {
+                        if (item.task && String(item.task).trim()) {
                             parts.push(`**Task:** ${item.task}`);
                         }
-                        if (item.constraints) {
+                        if (item.constraints && String(item.constraints).trim()) {
                             parts.push(`**Constraints:** ${item.constraints}`);
                         }
 
@@ -1140,7 +1324,7 @@ export const formatAssistantMessage = (content: string): string => {
                     }
 
                     // Fallback for other primitive types
-                    return String(item);
+                    return String(item).trim();
                 };
 
                 const op = parsed.optimized_prompt;
@@ -1154,7 +1338,10 @@ export const formatAssistantMessage = (content: string): string => {
                     optimizedPromptText = formatOptimizedItem(op);
                 }
 
+                // Only add section if there's actual content
+                if (optimizedPromptText && optimizedPromptText.trim()) {
                 sections.push(`**Optimized Prompt:**\n${optimizedPromptText}`);
+                }
             }
 
             const formatBulletItems = (value: any): string[] => {
@@ -1162,16 +1349,19 @@ export const formatAssistantMessage = (content: string): string => {
 
                 // Already an array
                 if (Array.isArray(value)) {
-                    return value.map((item: any) => {
-                        if (typeof item === 'string') return item;
+                    return value
+                        .map((item: any) => {
+                            if (typeof item === 'string') return item.trim();
                         if (typeof item === 'object') return JSON.stringify(item, null, 2);
-                        return String(item);
-                    });
+                            return String(item).trim();
+                        })
+                        .filter((item: string) => item && item.length > 0);
                 }
 
                 // Single string
                 if (typeof value === 'string') {
-                    return [value];
+                    const trimmed = value.trim();
+                    return trimmed ? [trimmed] : [];
                 }
 
                 // Single object
@@ -1180,7 +1370,8 @@ export const formatAssistantMessage = (content: string): string => {
                 }
 
                 // Primitive fallback
-                return [String(value)];
+                const str = String(value).trim();
+                return str ? [str] : [];
             };
             
             const changesMadeItems = formatBulletItems(parsed.changes_made);
@@ -1193,13 +1384,29 @@ export const formatAssistantMessage = (content: string): string => {
                 sections.push(`**Techniques Applied:**\n${techniquesAppliedItems.map((tech: string) => `• ${tech}`).join('\n')}`);
             }
             
-            if (parsed.pro_tip) {
-                sections.push(`**Pro Tip:**\n${parsed.pro_tip}`);
-            }
-            
-            if (parsed.share_message) {
-                sections.push(parsed.share_message);
-            }
+            // Pro Tip - if it's the only content, show without header
+                if (parsed.pro_tip && String(parsed.pro_tip).trim()) {
+                    if (sections.length === 0) {
+                        // Only pro tip exists, return content without header, then add share message
+                        return `${String(parsed.pro_tip).trim()}\n\n---\n\n**💡 Want to share or reuse this prompt?**\n\n👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**\n\n*Jet helps professionals write, reason, and communicate better with AI.*`;
+                    } else {
+                        sections.push(`**Pro Tip:**\n${parsed.pro_tip}`);
+                    }
+                }
+                
+                // Add share message if provided, otherwise add default share message
+                if (parsed.share_message && String(parsed.share_message).trim()) {
+                    sections.push(parsed.share_message);
+                } else {
+                    // Add default share message to all responses
+                    sections.push('---');
+                    sections.push('');
+                    sections.push('**💡 Want to share or reuse this prompt?**');
+                    sections.push('');
+                    sections.push('👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**');
+                    sections.push('');
+                    sections.push('*Jet helps professionals write, reason, and communicate better with AI.*');
+                }
             
             // Handle sample_prompts - can be array, string, or object
             if (parsed.sample_prompts) {
@@ -1681,29 +1888,183 @@ export const formatSystemLevelResponse = (response: any): string => {
     const sections: string[] = [];
     
     // Handle case where response might be a string or an object
-    let systemPrompt: string = '';
-    let keyEnhancements: any = null;
-    let platformTip: string = '';
-    let complianceStatement: string = '';
+    let parsed: any = null;
     
     if (typeof response === 'string') {
         // Try to parse as JSON
         try {
-            const parsed = JSON.parse(response);
-            systemPrompt = parsed.system_prompt || '';
-            keyEnhancements = parsed.key_enhancements;
-            platformTip = parsed.platform_tip || '';
-            complianceStatement = parsed.compliance_statement || '';
+            parsed = JSON.parse(response);
         } catch {
-            // If not JSON, treat as system_prompt string
-            systemPrompt = response;
+            // If not JSON, treat as system_prompt string (legacy format)
+            parsed = { system_prompt: response };
         }
     } else if (response && typeof response === 'object') {
-        systemPrompt = response.system_prompt || '';
-        keyEnhancements = response.key_enhancements;
-        platformTip = response.platform_tip || '';
-        complianceStatement = response.compliance_statement || '';
+        parsed = response;
+    } else {
+        return String(response);
     }
+    
+    // Check for new system prompt structure (role, objective, audience, etc.)
+    if (parsed.role || parsed.objective || parsed.audience || parsed.context || parsed.task) {
+        let formatted = '';
+        
+        // Role
+        if (parsed.role) {
+            if (typeof parsed.role === 'object' && parsed.role.description) {
+                formatted += `**Role:**\n${parsed.role.description}\n\n`;
+            } else if (typeof parsed.role === 'string') {
+                formatted += `**Role:**\n${parsed.role}\n\n`;
+            }
+        }
+        
+        // Objective
+        if (parsed.objective) {
+            if (typeof parsed.objective === 'object' && parsed.objective.description) {
+                formatted += `**Objective:**\n${parsed.objective.description}\n\n`;
+            } else if (typeof parsed.objective === 'string') {
+                formatted += `**Objective:**\n${parsed.objective}\n\n`;
+            }
+        }
+        
+        // Audience
+        if (parsed.audience) {
+            if (typeof parsed.audience === 'object' && parsed.audience.description) {
+                formatted += `**Audience:**\n${parsed.audience.description}\n\n`;
+            } else if (typeof parsed.audience === 'string') {
+                formatted += `**Audience:**\n${parsed.audience}\n\n`;
+            }
+        }
+        
+        // Context
+        if (parsed.context) {
+            if (typeof parsed.context === 'object' && parsed.context.description) {
+                formatted += `**Context:**\n${parsed.context.description}\n\n`;
+            } else if (typeof parsed.context === 'string') {
+                formatted += `**Context:**\n${parsed.context}\n\n`;
+            }
+        }
+        
+        // Task
+        if (parsed.task) {
+            formatted += `**Task:**\n`;
+            if (typeof parsed.task === 'object' && parsed.task.requirements && Array.isArray(parsed.task.requirements)) {
+                parsed.task.requirements.forEach((req: string) => {
+                    formatted += `• ${req}\n`;
+                });
+            } else if (typeof parsed.task === 'string') {
+                formatted += `${parsed.task}\n`;
+            }
+            formatted += '\n';
+        }
+        
+        // Constraints
+        if (parsed.constraints) {
+            formatted += `**Constraints:**\n`;
+            if (typeof parsed.constraints === 'object') {
+                if (parsed.constraints.avoid && Array.isArray(parsed.constraints.avoid) && parsed.constraints.avoid.length > 0) {
+                    formatted += `**Avoid:**\n`;
+                    parsed.constraints.avoid.forEach((item: string) => {
+                        formatted += `• ${item}\n`;
+                    });
+                    formatted += '\n';
+                }
+                if (parsed.constraints.follow && Array.isArray(parsed.constraints.follow) && parsed.constraints.follow.length > 0) {
+                    formatted += `**Follow:**\n`;
+                    parsed.constraints.follow.forEach((item: string) => {
+                        formatted += `• ${item}\n`;
+                    });
+                    formatted += '\n';
+                }
+            } else if (typeof parsed.constraints === 'string') {
+                formatted += `${parsed.constraints}\n\n`;
+            }
+        }
+        
+        // Process
+        if (parsed.process) {
+            formatted += `**Process:**\n`;
+            if (typeof parsed.process === 'object') {
+                if (parsed.process.internal_reasoning) {
+                    formatted += `**Internal Reasoning:** ${parsed.process.internal_reasoning}\n`;
+                }
+                if (parsed.process.final_output) {
+                    formatted += `**Final Output:** ${parsed.process.final_output}\n`;
+                }
+            } else if (typeof parsed.process === 'string') {
+                formatted += `${parsed.process}\n`;
+            }
+            formatted += '\n';
+        }
+        
+        // Style and Tone
+        if (parsed.style_and_tone) {
+            if (typeof parsed.style_and_tone === 'object' && parsed.style_and_tone.description) {
+                formatted += `**Style and Tone:**\n${parsed.style_and_tone.description}\n\n`;
+            } else if (typeof parsed.style_and_tone === 'string') {
+                formatted += `**Style and Tone:**\n${parsed.style_and_tone}\n\n`;
+            }
+        }
+        
+        // Output Format
+        if (parsed.output_format) {
+            if (typeof parsed.output_format === 'object' && parsed.output_format.description) {
+                formatted += `**Output Format:**\n${parsed.output_format.description}\n\n`;
+            } else if (typeof parsed.output_format === 'string') {
+                formatted += `**Output Format:**\n${parsed.output_format}\n\n`;
+            }
+        }
+        
+        // Quality Check
+        if (parsed.quality_check) {
+            formatted += `**Quality Check:**\n`;
+            if (typeof parsed.quality_check === 'object' && parsed.quality_check.criteria && Array.isArray(parsed.quality_check.criteria)) {
+                parsed.quality_check.criteria.forEach((criterion: string) => {
+                    formatted += `• ${criterion}\n`;
+                });
+            } else if (typeof parsed.quality_check === 'string') {
+                formatted += `${parsed.quality_check}\n`;
+            }
+            formatted += '\n';
+        }
+        
+        // Stop Condition
+        if (parsed.stop_condition) {
+            if (typeof parsed.stop_condition === 'object' && parsed.stop_condition.description) {
+                formatted += `**Stop Condition:**\n${parsed.stop_condition.description}\n\n`;
+            } else if (typeof parsed.stop_condition === 'string') {
+                formatted += `**Stop Condition:**\n${parsed.stop_condition}\n\n`;
+            }
+        }
+        
+        // Acceptance Criteria
+        if (parsed.acceptance_criteria) {
+            if (typeof parsed.acceptance_criteria === 'object' && parsed.acceptance_criteria.description) {
+                formatted += `**Acceptance Criteria:**\n${parsed.acceptance_criteria.description}\n\n`;
+            } else if (typeof parsed.acceptance_criteria === 'string') {
+                formatted += `**Acceptance Criteria:**\n${parsed.acceptance_criteria}\n\n`;
+            }
+        }
+        
+        // Pro Tip
+        if (parsed.pro_tip) {
+            if (typeof parsed.pro_tip === 'object' && parsed.pro_tip.description) {
+                formatted += `**Pro Tip:**\n${parsed.pro_tip.description}\n`;
+            } else if (typeof parsed.pro_tip === 'string') {
+                formatted += `**Pro Tip:**\n${parsed.pro_tip}\n`;
+            }
+        }
+        
+        // Add share message to all system level responses
+        formatted += '\n\n---\n\n**💡 Want to share or reuse this prompt?**\n\n👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**\n\n*Jet helps professionals write, reason, and communicate better with AI.*';
+        
+        return formatted.trim();
+    }
+    
+    // Legacy format: system_prompt, key_enhancements, platform_tip, compliance_statement
+    let systemPrompt: string = parsed.system_prompt || '';
+    let keyEnhancements: any = parsed.key_enhancements;
+    let platformTip: string = parsed.platform_tip || '';
+    let complianceStatement: string = parsed.compliance_statement || '';
     
     if (systemPrompt) {
         const parsedSections: Record<string, string> = {};
@@ -2015,6 +2376,15 @@ export const formatSystemLevelResponse = (response: any): string => {
         sections.push('**Compliance Statement:**\n');
         sections.push(`  ${complianceStatement}`);
     }
+    
+    // Add share message to all system level responses
+    sections.push('---');
+    sections.push('');
+    sections.push('**💡 Want to share or reuse this prompt?**');
+    sections.push('');
+    sections.push('👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**');
+    sections.push('');
+    sections.push('*Jet helps professionals write, reason, and communicate better with AI.*');
     
     // Join sections with newlines - blank lines are already added between sections
     return sections.join('\n');

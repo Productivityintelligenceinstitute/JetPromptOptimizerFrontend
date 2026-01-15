@@ -9,14 +9,15 @@ import { useAuth } from '@/shared/context/AuthContext';
 import { getChatMessages, deleteChat } from '@/shared/api/chat';
 import { getMyLibrary, addToLibrary } from '@/shared/api/library';
 import { logError } from '@/shared/utils/errorHandler';
-import { formatMessage } from '@/shared/utils/messageFormatter';
+import { formatMessage, formatAssistantMessage, formatMasterLevelResponse, formatSystemLevelResponse } from '@/shared/utils/messageFormatter';
 import { detectOptimizationLevel, getLevelDisplayName, OPTIMIZATION_LEVELS, OptimizationLevel } from '@/shared/utils/optimizationLevel';
 import { generateOptimizationLevelMessage } from '@/shared/utils/optimizationLevelMessage';
 import UpgradeRequiredModal from '@/shared/components/Modal/UpgradeRequiredModal';
 import DailyLimitExceededModal from '@/shared/components/Modal/DailyLimitExceededModal';
 import SharePromptModal from '@/shared/components/Modal/SharePromptModal';
 import DeleteChatModal from '@/shared/components/Modal/DeleteChatModal';
-import { createOptimizationSocket, OptimizationLevelKey } from '@/shared/services/optimizationSocket';
+import Notification from '@/shared/components/Notification/Notification';
+import { createOptimizationSocket, OptimizationLevelKey, formatOptimizationResponse } from '@/shared/services/optimizationSocket';
 
 export default function ChatSessionPage() {
     const params = useParams();
@@ -74,6 +75,7 @@ export default function ChatSessionPage() {
     const [isSharing, setIsSharing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [sharedMessageIds, setSharedMessageIds] = useState<Set<string>>(new Set());
+    const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
     
     // Track the previous chatId to detect when we're switching to a different chat
     const prevChatIdRef = useRef<string | undefined>(undefined);
@@ -154,15 +156,91 @@ export default function ChatSessionPage() {
             try {
                 setIsLoadingMessages(true);
                 const response = await getChatMessages(chatId);
+                
+                // Determine the optimization level for formatting
+                // First try to detect from the first assistant message
+                let detectedLevel: OptimizationLevelKey = 'basic';
+                const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
+                if (firstAssistant && firstAssistant.content) {
+                    try {
+                        const parsed = JSON.parse(firstAssistant.content);
+                        if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                            detectedLevel = 'mastery';
+                        } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                            // New system prompt structure or legacy format
+                            detectedLevel = 'system';
+                        } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                            detectedLevel = 'structured';
+                        }
+                    } catch {
+                        // Not JSON, use level detection
+                        const detected = detectOptimizationLevel(firstAssistant.content);
+                        if (detected) {
+                            detectedLevel = detected.level as OptimizationLevelKey;
+                        }
+                    }
+                }
+                
+                // Use effective level if available, otherwise use detected level
+                const levelKey: OptimizationLevelKey =
+                    isStructuredLevel ? 'structured' :
+                    isMasteryLevel ? 'mastery' :
+                    isSystemLevel ? 'system' :
+                    detectedLevel;
+                
                 const formattedMessages: Message[] = response.items
                     .reverse()
                     .map((msg: any) => {
                         const backendId = msg.id as string | undefined;
                         const isShared = !!backendId && sharedMessageIds.has(backendId);
+                        
+                        let content = msg.content;
+                        
+                        // For assistant messages, try to parse and format JSON according to level
+                        if (msg.role === 'assistant' && typeof content === 'string') {
+                            // Try to parse as JSON
+                            try {
+                                const parsed = JSON.parse(content);
+                                // Auto-detect level if not set, then format
+                                let actualLevel = levelKey;
+                                if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                                    actualLevel = 'mastery';
+                                } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                                    actualLevel = 'system';
+                                } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                                    actualLevel = 'structured';
+                                }
+                                
+                                // Format according to detected level
+                                if (actualLevel === 'mastery') {
+                                    content = formatMasterLevelResponse(parsed);
+                                } else if (actualLevel === 'system') {
+                                    content = formatSystemLevelResponse(parsed);
+                                } else {
+                                    content = formatOptimizationResponse(parsed, actualLevel);
+                                }
+                            } catch {
+                                // Not JSON, use formatMessage as fallback
+                                content = formatMessage(msg.role, content);
+                            }
+                        } else if (msg.role === 'assistant') {
+                            // Already an object, format it
+                            if (levelKey === 'mastery') {
+                                content = formatMasterLevelResponse(content);
+                            } else if (levelKey === 'system') {
+                                content = formatSystemLevelResponse(content);
+                            } else {
+                                content = formatOptimizationResponse(content, levelKey);
+                            }
+                        } else {
+                            // User messages - return as-is
+                            content = formatMessage(msg.role, content);
+                        }
+                        
                         return {
                             id: backendId || crypto.randomUUID(),
                         role: msg.role as 'user' | 'assistant',
-                        content: formatMessage(msg.role, msg.content),
+                            content: content,
                             messageId: backendId,
                             isShared,
                         };
@@ -269,12 +347,10 @@ export default function ChatSessionPage() {
         if (!user) {
             // Remove the optimistically added message
             setMessages((prev) => prev.slice(0, -1));
-            const errorMsg: Message = {
-                id: crypto.randomUUID(),
-                role: 'assistant',
-                content: "Please log in to use the chat feature.",
-            };
-            setMessages((prev) => [...prev, errorMsg]);
+            setNotification({
+                message: "Please log in to use the chat feature.",
+                type: 'error'
+            });
             return;
         }
 
@@ -300,48 +376,93 @@ export default function ChatSessionPage() {
             userPrompt: content,
             callbacks: {
                 onToken: (partialText) => {
-                    setMessages((prev) => {
-                        if (!streamMessageId) {
-                            const newId = crypto.randomUUID();
-                            setStreamMessageId(newId);
-                            return [
-                                ...prev,
-                                {
-                                    id: newId,
-                                    role: 'assistant',
-                                    content: partialText,
-                                },
-                            ];
-                        }
-                        return prev.map((m) =>
-                            m.id === streamMessageId
-                                ? { ...m, content: partialText }
-                                : m
-                        );
-                    });
+                    // Don't update UI with partial tokens during streaming
+                    // The isLoading prop on ChatArea will show the loading indicator
+                    // We'll only update the message when we have the final text
                 },
                 onCompleted: async (newChatId) => {
                     if (newChatId && newChatId !== 'undefined' && newChatId !== 'null') {
                         const isNewChat = !chatId;
-                        if (isNewChat) {
-                            setChatId(newChatId);
-                            const currentSearch = window.location.search || '';
-                            const newUrl = currentSearch
-                                ? `/chat/${newChatId}${currentSearch}`
-                                : `/chat/${newChatId}`;
-                            router.replace(newUrl);
+                    if (isNewChat) {
+                        setChatId(newChatId);
+                        const currentSearch = window.location.search || '';
+                        const newUrl = currentSearch
+                            ? `/chat/${newChatId}${currentSearch}`
+                            : `/chat/${newChatId}`;
+                        router.replace(newUrl);
                         }
                         try {
                             const response = await getChatMessages(newChatId);
+                            
+                            // Determine the optimization level for formatting
+                            const levelKey: OptimizationLevelKey =
+                                isStructuredLevel ? 'structured' :
+                                isMasteryLevel ? 'mastery' :
+                                isSystemLevel ? 'system' :
+                                'basic';
+                            
                             const formattedMessages: Message[] = response.items
                                 .reverse()
                                 .map((msg: any) => {
                                     const backendId = msg.id as string | undefined;
                                     const isShared = !!backendId && sharedMessageIds.has(backendId);
+                                    
+                                    let content = msg.content;
+                                    
+                                    // For assistant messages, try to parse and format JSON according to level
+                                    if (msg.role === 'assistant' && typeof content === 'string') {
+                                        // Try to parse as JSON
+                                        try {
+                                            const parsed = JSON.parse(content);
+                                            // Auto-detect level from content structure
+                                            let actualLevel = levelKey;
+                                            if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                                                actualLevel = 'mastery';
+                                            } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                                                actualLevel = 'system';
+                                            } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                                                actualLevel = 'structured';
+                                            }
+                                            
+                                            // Format according to detected level
+                                            if (actualLevel === 'mastery') {
+                                                content = formatMasterLevelResponse(parsed);
+                                            } else if (actualLevel === 'system') {
+                                                content = formatSystemLevelResponse(parsed);
+                                            } else {
+                                                content = formatOptimizationResponse(parsed, actualLevel);
+                                            }
+                                        } catch {
+                                            // Not JSON, use formatMessage as fallback
+                                            content = formatMessage(msg.role, content);
+                                        }
+                                    } else if (msg.role === 'assistant') {
+                                        // Already an object, auto-detect level and format it
+                                        let actualLevel = levelKey;
+                                        if (content.overview || content.deconstruct || content.diagnose || content.develop || content.deliver) {
+                                            actualLevel = 'mastery';
+                                        } else if (content.system_prompt || content.key_enhancements || content.role || content.objective || content.audience || content.context) {
+                                            actualLevel = 'system';
+                                        } else if (content.techniques_applied || (content.optimized_prompt && typeof content.optimized_prompt === 'object')) {
+                                            actualLevel = 'structured';
+                                        }
+                                        
+                                        if (actualLevel === 'mastery') {
+                                            content = formatMasterLevelResponse(content);
+                                        } else if (actualLevel === 'system') {
+                                            content = formatSystemLevelResponse(content);
+                                        } else {
+                                            content = formatOptimizationResponse(content, actualLevel);
+                                        }
+                                    } else {
+                                        // User messages - return as-is
+                                        content = formatMessage(msg.role, content);
+                                    }
+                                    
                                     return {
                                         id: backendId || crypto.randomUUID(),
-                                        role: msg.role as 'user' | 'assistant',
-                                        content: formatMessage(msg.role, msg.content),
+                                    role: msg.role as 'user' | 'assistant',
+                                        content: content,
                                         messageId: backendId,
                                         isShared,
                                     };
@@ -355,6 +476,7 @@ export default function ChatSessionPage() {
                 },
                 onFinalText: (finalText) => {
                     if (!finalText) return;
+                    // Update the message with final formatted text
                     setMessages((prev) => {
                         if (!streamMessageId) {
                             const newId = crypto.randomUUID();
@@ -379,12 +501,11 @@ export default function ChatSessionPage() {
                     setIsStreaming(false);
                     // Remove optimistic user message
                     setMessages((prev) => prev.slice(0, -1));
-                    const errorMsg: Message = {
-                        id: crypto.randomUUID(),
-                        role: 'assistant',
-                        content: messageText,
-                    };
-                    setMessages((prev) => [...prev, errorMsg]);
+                    // Show error in toast notification instead of chat
+                    setNotification({
+                        message: messageText || "Sorry, something went wrong while optimizing your prompt. Please try again.",
+                        type: 'error'
+                    });
                 },
                 onCancelled: () => {
                     setIsStreaming(false);
@@ -396,9 +517,13 @@ export default function ChatSessionPage() {
             // Socket creation failed (e.g., missing base URL) – revert optimistic user message
             setIsStreaming(false);
             setMessages((prev) => prev.slice(0, -1));
-            return;
-        }
-
+            setNotification({
+                message: "WebSocket endpoint is not configured. Please contact support.",
+                type: 'error'
+            });
+                            return;
+                        }
+                        
         wsRef.current = socket;
     };
 
@@ -407,7 +532,10 @@ export default function ChatSessionPage() {
         const message = messages.find(msg => msg.id === messageId || msg.messageId === messageId);
         const shareId = message?.messageId || message?.id;
         if (!shareId) {
-            alert('Unable to share: Message ID not found. Please try again.');
+            setNotification({
+                message: 'Unable to share: Message ID not found. Please try again.',
+                type: 'error'
+            });
             return;
         }
         
@@ -441,7 +569,10 @@ export default function ChatSessionPage() {
             router.push('/library');
         } catch (error: any) {
             console.error('Failed to share prompt:', error);
-            alert(error.message || 'Failed to share prompt. Please try again.');
+            setNotification({
+                message: error.message || 'Failed to share prompt. Please try again.',
+                type: 'error'
+            });
         } finally {
             setIsSharing(false);
         }
@@ -457,7 +588,10 @@ export default function ChatSessionPage() {
             router.push('/chat/new');
         } catch (error: any) {
             console.error('Failed to delete chat:', error);
-            alert(error.message || 'Failed to delete chat. Please try again.');
+            setNotification({
+                message: error.message || 'Failed to delete chat. Please try again.',
+                type: 'error'
+            });
         } finally {
             setIsDeleting(false);
         }
@@ -487,6 +621,13 @@ export default function ChatSessionPage() {
                 onConfirm={handleDeleteChat}
                 isLoading={isDeleting}
             />
+            {notification && (
+                <Notification
+                    message={notification.message}
+                    type={notification.type}
+                    onClose={() => setNotification(null)}
+                />
+            )}
             <ChatArea 
                 messages={messages} 
                 isLoading={isStreaming || isLoadingMessages} 

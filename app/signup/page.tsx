@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/shared/context/AuthContext';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -23,8 +22,7 @@ const signupSchema = z.object({
 type SignupForm = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
-  const { signup, isLoading, user, isInitialized } = useAuth();
-  const router = useRouter();
+  const { signup, isLoading } = useAuth();
   const [signupSuccess, setSignupSuccess] = useState(false);
   const {
     register,
@@ -38,9 +36,8 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupForm) => {
     try {
       await signup(data.email, data.password, data.name);
-      // Mark signup as successful - wait for user sync to complete
+      // Mark signup as successful - GuestGuard will handle redirect once user sync completes
       setSignupSuccess(true);
-      // The useEffect will handle the redirect once user is available
     } catch (error) {
       setError('root', { message: 'Signup failed. Please try again.' });
       setSignupSuccess(false);
