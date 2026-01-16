@@ -3,6 +3,7 @@ export const APP_ROUTES = {
   features: "/#features",
   pricing: "/#pricing",
   resources: "/resources",
+  about: "/about",
   getStarted: "/get-started",
   login: "/login",
   signup: "/signup",
@@ -22,6 +23,7 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { key: "features", label: "Features", href: APP_ROUTES.features },
   { key: "pricing", label: "Pricing", href: APP_ROUTES.pricing },
   { key: "resources", label: "Resources", href: APP_ROUTES.resources },
+  { key: "about", label: "About", href: APP_ROUTES.about },
 ];
 
 export const CTA_NAV_ITEM: NavItem = {
