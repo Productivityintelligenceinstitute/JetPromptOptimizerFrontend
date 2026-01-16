@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useAuth } from '@/shared/context/AuthContext';
 import { getLibraryPrompts, SharedPrompt } from '@/shared/api/library';
 import AuthGuard from '@/shared/components/auth/AuthGuard';
@@ -9,9 +9,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { formatAssistantMessage, formatMasterLevelResponse, formatSystemLevelResponse } from '@/shared/utils/messageFormatter';
 import { formatOptimizationResponse } from '@/shared/services/optimizationSocket';
 import { markdownToPlainText, markdownToHTML } from '@/shared/utils/markdownToPlainText';
-import { OptimizationLevelKey } from '@/shared/types/chat';
+import { OptimizationLevelKey } from '@/shared/services/optimizationSocket';
 
-export default function LibraryPage() {
+function LibraryContent() {
     const { user } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -131,8 +131,7 @@ export default function LibraryPage() {
     };
 
     return (
-        <AuthGuard>
-            <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-50">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 pt-24">
                     <div className="mb-8">
                         <div className="flex items-center justify-between mb-4">
@@ -362,7 +361,27 @@ export default function LibraryPage() {
                     )}
                 </div>
             </div>
-        </AuthGuard>
     );
+}
+
+export default function LibraryPage() {
+  return (
+    <AuthGuard>
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 pt-24">
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent"></div>
+                <p className="mt-4 text-sm text-gray-600">Loading...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      }>
+        <LibraryContent />
+      </Suspense>
+    </AuthGuard>
+  );
 }
 

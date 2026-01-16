@@ -2,18 +2,20 @@
  * Utility functions for date formatting and grouping
  */
 
+import { Chat } from '@/shared/types/chat';
+
 export interface GroupedChats {
-    today: Array<{ chat_id: string; chat_title: string; created_at: string }>;
-    yesterday: Array<{ chat_id: string; chat_title: string; created_at: string }>;
-    previous7Days: Array<{ chat_id: string; chat_title: string; created_at: string }>;
-    older: Array<{ chat_id: string; chat_title: string; created_at: string }>;
+    today: Chat[];
+    yesterday: Chat[];
+    previous7Days: Chat[];
+    older: Chat[];
 }
 
 /**
  * Groups chats by date into Today, Yesterday, Previous 7 Days, and Older
  */
 export const groupChatsByDate = (
-    chats: Array<{ chat_id: string; chat_title: string; created_at: string }>
+    chats: Chat[]
 ): GroupedChats => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());

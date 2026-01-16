@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 import AdminGuard from "@/shared/components/auth/AdminGuard";
@@ -8,7 +8,7 @@ import { AdminNavbar } from "@/shared/components/navbar/AdminNavbar";
 import { useAuth } from "@/shared/context/AuthContext";
 import { getAdminUsers, AdminUserListItem, updateUserRole } from "@/shared/api/user";
 
-export default function AdminUsersPage() {
+function AdminUsersContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -106,8 +106,7 @@ export default function AdminUsersPage() {
   );
 
     return (
-        <AdminGuard>
-            <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-50">
                 <AdminNavbar />
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
           <div className="mb-8">
@@ -283,8 +282,29 @@ export default function AdminUsersPage() {
                     )}
                 </main>
             </div>
-        </AdminGuard>
     );
+}
+
+export default function AdminUsersPage() {
+  return (
+    <AdminGuard>
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50">
+          <AdminNavbar />
+          <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent" />
+                <p className="mt-4 text-sm text-gray-600">Loading...</p>
+              </div>
+            </div>
+          </main>
+        </div>
+      }>
+        <AdminUsersContent />
+      </Suspense>
+    </AdminGuard>
+  );
 }
 
 

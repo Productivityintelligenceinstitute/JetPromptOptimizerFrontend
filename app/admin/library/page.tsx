@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useAuth } from "@/shared/context/AuthContext";
 import { getLibraryPrompts, SharedPrompt, removeFromLibrary } from "@/shared/api/library";
 import AdminGuard from "@/shared/components/auth/AdminGuard";
@@ -10,9 +10,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { formatAssistantMessage, formatMasterLevelResponse, formatSystemLevelResponse } from "@/shared/utils/messageFormatter";
 import { formatOptimizationResponse } from "@/shared/services/optimizationSocket";
 import { markdownToPlainText, markdownToHTML } from "@/shared/utils/markdownToPlainText";
-import { OptimizationLevelKey } from "@/shared/types/chat";
+import { OptimizationLevelKey } from "@/shared/services/optimizationSocket";
 
-export default function AdminLibraryPage() {
+function AdminLibraryContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -131,8 +131,7 @@ export default function AdminLibraryPage() {
   };
 
   return (
-    <AdminGuard>
-      <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
         <AdminNavbar />
         <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
           <div className="mb-8">
@@ -347,6 +346,27 @@ export default function AdminLibraryPage() {
           )}
         </main>
       </div>
+  );
+}
+
+export default function AdminLibraryPage() {
+  return (
+    <AdminGuard>
+      <Suspense fallback={
+        <div className="min-h-screen bg-gray-50">
+          <AdminNavbar />
+          <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent" />
+                <p className="mt-4 text-sm text-gray-600">Loading...</p>
+              </div>
+            </div>
+          </main>
+        </div>
+      }>
+        <AdminLibraryContent />
+      </Suspense>
     </AdminGuard>
   );
 }

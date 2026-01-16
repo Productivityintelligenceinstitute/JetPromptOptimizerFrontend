@@ -40,18 +40,41 @@ export const normalizeError = (error: unknown): ApiError => {
     const message = error.response?.data?.detail || error.message || 'Request failed';
     
     if (statusCode === 401) {
-      return new AuthenticationError(message, error.response?.data);
+      return new AuthenticationError(
+        message,
+        error.response?.data,
+        error.response ? {
+          data: error.response.data,
+          status: error.response.status,
+        } : undefined
+      );
     }
     
     if (statusCode === 404) {
-      return new UserNotFoundError(message, error.response?.data);
+      return new UserNotFoundError(
+        message,
+        error.response?.data,
+        error.response ? {
+          data: error.response.data,
+          status: error.response.status,
+        } : undefined
+      );
     }
 
     if (!error.response) {
       return new NetworkError('Network request failed', error);
     }
 
-    return new ApiError(message, statusCode, error.code, error.response?.data);
+    return new ApiError(
+      message,
+      statusCode,
+      error.code,
+      error.response?.data,
+      error.response ? {
+        data: error.response.data,
+        status: error.response.status,
+      } : undefined
+    );
   }
 
   if (error instanceof Error) {

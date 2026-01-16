@@ -1,12 +1,12 @@
 "use client";
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import EmptyState from '@/shared/components/Chat/EmptyState';
 import Notification from '@/shared/components/Notification/Notification';
 import { useAuth } from '@/shared/context/AuthContext';
 import { getCurrentUser } from '@/shared/api/user';
 
-export default function NewChatPage() {
+function NewChatContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user, refreshUser } = useAuth();
@@ -73,4 +73,21 @@ export default function NewChatPage() {
             </div>
         </div>
     );
+}
+
+export default function NewChatPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent" />
+            <p className="mt-4 text-sm text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <NewChatContent />
+    </Suspense>
+  );
 }

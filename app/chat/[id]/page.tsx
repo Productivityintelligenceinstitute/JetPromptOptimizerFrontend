@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import ChatArea from '@/shared/components/Chat/ChatArea';
 import ChatInput from '@/shared/components/Chat/ChatInput';
@@ -19,7 +19,7 @@ import DeleteChatModal from '@/shared/components/Modal/DeleteChatModal';
 import Notification from '@/shared/components/Notification/Notification';
 import { createOptimizationSocket, OptimizationLevelKey, formatOptimizationResponse } from '@/shared/services/optimizationSocket';
 
-export default function ChatSessionPage() {
+function ChatSessionContent() {
     const params = useParams();
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -711,5 +711,22 @@ export default function ChatSessionPage() {
             <ChatInput onSendMessage={handleSendMessage} isLoading={isStreaming} />
         </div>
     );
+}
+
+export default function ChatSessionPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent" />
+            <p className="mt-4 text-sm text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <ChatSessionContent />
+    </Suspense>
+  );
 }
 
