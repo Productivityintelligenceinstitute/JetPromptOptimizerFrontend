@@ -1,6 +1,7 @@
 "use client";
 import { forwardRef, useState } from 'react';
 import { ChatAreaProps } from '@/shared/types/chat';
+import { markdownToPlainText, markdownToHTML } from '@/shared/utils/markdownToPlainText';
 
 const CopyIcon = ({ className }: { className?: string }) => (
     <svg
@@ -96,13 +97,33 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
 
     const handleCopy = async (content: string, messageId: string) => {
         try {
-            await navigator.clipboard.writeText(content);
+            // Convert markdown to HTML for rich text formatting
+            const htmlContent = markdownToHTML(content);
+            const plainText = markdownToPlainText(content);
+            
+            // Use Clipboard API with both HTML and plain text formats
+            const clipboardItem = new ClipboardItem({
+                'text/html': new Blob([htmlContent], { type: 'text/html' }),
+                'text/plain': new Blob([plainText], { type: 'text/plain' })
+            });
+            
+            await navigator.clipboard.write([clipboardItem]);
             setCopiedMessageId(messageId);
             setTimeout(() => {
                 setCopiedMessageId(null);
             }, 2000);
         } catch (err) {
-            console.error('Failed to copy text:', err);
+            // Fallback to plain text if HTML clipboard fails
+            try {
+                const plainText = markdownToPlainText(content);
+                await navigator.clipboard.writeText(plainText);
+                setCopiedMessageId(messageId);
+                setTimeout(() => {
+                    setCopiedMessageId(null);
+                }, 2000);
+            } catch (fallbackErr) {
+                console.error('Failed to copy text:', fallbackErr);
+            }
         }
     };
 

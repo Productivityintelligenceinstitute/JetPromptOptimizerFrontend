@@ -59,7 +59,37 @@ export function formatOptimizationResponse(parsed: any, level: OptimizationLevel
     
     if (parsed.optimized_prompt) {
       let optContent = '';
-      if (typeof parsed.optimized_prompt === 'object') {
+      
+      // Handle array of objects (backend format)
+      if (Array.isArray(parsed.optimized_prompt) && parsed.optimized_prompt.length > 0) {
+        const optParts: string[] = [];
+        // Process each object in the array
+        parsed.optimized_prompt.forEach((opt: any, index: number) => {
+          if (typeof opt === 'object' && opt !== null) {
+            // Add separator if multiple prompts
+            if (index > 0) optParts.push('');
+            
+            if (opt.role && String(opt.role).trim()) optParts.push(`**Role:** ${opt.role}`);
+            if (opt.objective && String(opt.objective).trim()) optParts.push(`**Objective:** ${opt.objective}`);
+            if (opt.context && String(opt.context).trim()) optParts.push(`**Context:** ${opt.context}`);
+            if (opt.task && Array.isArray(opt.task) && opt.task.length > 0) {
+              const tasks = opt.task.filter((t: any) => t && String(t).trim()).map((t: string) => `• ${t}`).join('\n');
+              if (tasks) optParts.push(`**Task:**\n${tasks}`);
+            } else if (opt.task && String(opt.task).trim()) {
+              optParts.push(`**Task:** ${opt.task}`);
+            }
+            if (opt.constraints && Array.isArray(opt.constraints) && opt.constraints.length > 0) {
+              const constraints = opt.constraints.filter((c: any) => c && String(c).trim()).map((c: string) => `• ${c}`).join('\n');
+              if (constraints) optParts.push(`**Constraints:**\n${constraints}`);
+            } else if (opt.constraints && String(opt.constraints).trim()) {
+              optParts.push(`**Constraints:** ${opt.constraints}`);
+            }
+          }
+        });
+        optContent = optParts.join('\n');
+      } 
+      // Handle single object
+      else if (typeof parsed.optimized_prompt === 'object' && parsed.optimized_prompt !== null && !Array.isArray(parsed.optimized_prompt)) {
         const opt = parsed.optimized_prompt;
         const optParts: string[] = [];
         if (opt.role && String(opt.role).trim()) optParts.push(`**Role:** ${opt.role}`);
@@ -78,7 +108,9 @@ export function formatOptimizationResponse(parsed: any, level: OptimizationLevel
           optParts.push(`**Constraints:** ${opt.constraints}`);
         }
         optContent = optParts.join('\n');
-      } else if (String(parsed.optimized_prompt).trim()) {
+      } 
+      // Handle string
+      else if (String(parsed.optimized_prompt).trim()) {
         optContent = String(parsed.optimized_prompt);
       }
       

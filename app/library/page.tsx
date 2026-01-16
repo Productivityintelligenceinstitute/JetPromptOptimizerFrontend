@@ -7,6 +7,7 @@ import AuthGuard from '@/shared/components/auth/AuthGuard';
 import Pagination from '@/shared/components/admin/Pagination';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatAssistantMessage } from '@/shared/utils/messageFormatter';
+import { markdownToPlainText } from '@/shared/utils/markdownToPlainText';
 
 export default function LibraryPage() {
     const { user } = useAuth();
@@ -49,7 +50,9 @@ export default function LibraryPage() {
 
     const handleCopy = async (content: string, index: number) => {
         try {
-            await navigator.clipboard.writeText(content);
+            // Convert markdown to plain text before copying
+            const plainText = markdownToPlainText(content);
+            await navigator.clipboard.writeText(plainText);
             setCopiedPromptId(index);
             setTimeout(() => {
                 setCopiedPromptId(null);

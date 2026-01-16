@@ -386,27 +386,34 @@ export function formatMasterLevelResponse(content: string | any): string {
                 // Deconstruct section
                 if (parsed.deconstruct) {
                     const deconstruct = parsed.deconstruct;
-                    formatted += '**Deconstruct**\n\n';
+                    formatted += '**Deconstruct (Intent & Constraints)**\n\n';
                     if (deconstruct.intent) formatted += `**Intent:** ${deconstruct.intent}\n\n`;
                     if (deconstruct.audience) formatted += `**Audience:** ${deconstruct.audience}\n\n`;
                     if (deconstruct.constraints) {
                         formatted += '**Constraints:**\n';
                         const constraints = deconstruct.constraints;
+                        const constraintItems: string[] = [];
+                        
                         if (constraints.tone && Array.isArray(constraints.tone) && constraints.tone.length > 0) {
-                            formatted += `  Tone: ${constraints.tone.join(', ')}\n`;
+                            constraintItems.push(`Emotional tone: ${constraints.tone.join(', ')}`);
                         }
                         if (constraints.style && Array.isArray(constraints.style) && constraints.style.length > 0) {
-                            formatted += `  Style: ${constraints.style.join(', ')}\n`;
+                            constraintItems.push(`Style: ${constraints.style.join(', ')}`);
                         }
                         if (constraints.technical_or_structural && Array.isArray(constraints.technical_or_structural) && constraints.technical_or_structural.length > 0) {
-                            formatted += `  Technical/Structural: ${constraints.technical_or_structural.join(', ')}\n`;
+                            constraintItems.push(`Technical/Structural: ${constraints.technical_or_structural.join(', ')}`);
                         }
                         if (constraints.format) {
                             const format = constraints.format;
-                            if (format.length) formatted += `  Length: ${format.length}\n`;
-                            if (format.structure) formatted += `  Structure: ${format.structure}\n`;
+                            if (format.length) constraintItems.push(`Length: ${format.length}`);
+                            if (format.structure) constraintItems.push(`Structure: ${format.structure}`);
                         }
-                        if (constraints.success_criteria) formatted += `  Success Criteria: ${constraints.success_criteria}\n`;
+                        if (constraints.success_criteria) constraintItems.push(`Success Criteria: ${constraints.success_criteria}`);
+                        
+                        // Format as bullet points
+                        constraintItems.forEach(item => {
+                            formatted += `• ${item}\n`;
+                        });
                         formatted += '\n';
                     }
                 }
@@ -414,21 +421,46 @@ export function formatMasterLevelResponse(content: string | any): string {
                 // Diagnose section
                 if (parsed.diagnose) {
                     const diagnose = parsed.diagnose;
-                    formatted += '**Diagnose**\n\n';
+                    formatted += '**Diagnose (Select Pattern + Quality Targets)**\n\n';
+                    
+                    // Pattern section
+                    const patternItems: string[] = [];
                     if (diagnose.reasoning_patterns && Array.isArray(diagnose.reasoning_patterns) && diagnose.reasoning_patterns.length > 0) {
-                        formatted += `**Reasoning Patterns:** ${diagnose.reasoning_patterns.join(', ')}\n\n`;
+                        diagnose.reasoning_patterns.forEach((pattern: string) => {
+                            patternItems.push(`→ ${pattern}`);
+                        });
                     }
                     if (diagnose.style_or_domain_emulation && Array.isArray(diagnose.style_or_domain_emulation) && diagnose.style_or_domain_emulation.length > 0) {
-                        formatted += `**Style/Domain Emulation:** ${diagnose.style_or_domain_emulation.join(', ')}\n\n`;
+                        diagnose.style_or_domain_emulation.forEach((style: string) => {
+                            patternItems.push(`→ ${style}`);
+                        });
                     }
+                    
+                    if (patternItems.length > 0) {
+                        formatted += '**Pattern:**\n';
+                        patternItems.forEach(item => {
+                            formatted += `${item}\n`;
+                        });
+                        formatted += '\n';
+                    }
+                    
+                    // Process Quality Control
                     if (diagnose.quality_targets) {
-                        formatted += '**Quality Targets:**\n';
+                        formatted += '**Process Quality Control:**\n';
+                        formatted += 'Target rubric =\n';
                         const targets = diagnose.quality_targets;
-                        if (targets.consistency !== undefined) formatted += `  Consistency: ${targets.consistency}\n`;
-                        if (targets.completeness !== undefined) formatted += `  Completeness: ${targets.completeness}\n`;
-                        if (targets.specificity !== undefined) formatted += `  Specificity: ${targets.specificity}\n`;
-                        if (targets.faithfulness !== undefined) formatted += `  Faithfulness: ${targets.faithfulness}\n`;
-                        if (targets.variance) formatted += `  Variance: ${targets.variance}\n`;
+                        const qualityItems: string[] = [];
+                        
+                        if (targets.consistency !== undefined) qualityItems.push(`Consistency ≥ ${targets.consistency}`);
+                        if (targets.completeness !== undefined) qualityItems.push(`Completeness ≥ ${targets.completeness}`);
+                        if (targets.specificity !== undefined) qualityItems.push(`Specificity ≥ ${targets.specificity}`);
+                        if (targets.faithfulness !== undefined) qualityItems.push(`Faithfulness ≥ ${targets.faithfulness}`);
+                        if (targets.variance) qualityItems.push(`Variance (σ) ≤ ${targets.variance}`);
+                        
+                        // Format as bullet points
+                        qualityItems.forEach(item => {
+                            formatted += `• ${item}\n`;
+                        });
                         formatted += '\n';
                     }
                 }
@@ -436,30 +468,39 @@ export function formatMasterLevelResponse(content: string | any): string {
                 // Develop section - Optimized Prompt
                 if (parsed.develop && parsed.develop.optimized_prompt) {
                     const develop = parsed.develop;
-                    formatted += '**Develop**\n\n';
-                    formatted += '**Optimized Prompt:**\n\n';
+                    formatted += '**Develop (Optimized Prompt)**\n\n';
+                    formatted += '**Your Optimized Prompt (Mastery Mode):**\n\n';
                     
                     const opt = develop.optimized_prompt;
                     if (typeof opt === 'object' && opt !== null) {
-                        if (opt.role) formatted += `**Role:** ${opt.role}\n`;
-                        if (opt.objective) formatted += `**Objective:** ${opt.objective}\n`;
-                        if (opt.context) formatted += `**Context:** ${opt.context}\n`;
-                        if (opt.constraints && Array.isArray(opt.constraints)) {
+                        if (opt.role) formatted += `**Role:** ${opt.role}\n\n`;
+                        if (opt.objective) formatted += `**Objective:** ${opt.objective}\n\n`;
+                        if (opt.context) formatted += `**Context:** ${opt.context}\n\n`;
+                        if (opt.constraints && Array.isArray(opt.constraints) && opt.constraints.length > 0) {
                             formatted += '**Constraints:**\n';
-                            opt.constraints.forEach((c: string) => formatted += `• ${c}\n`);
-                        } else if (opt.constraints) {
-                            formatted += `**Constraints:** ${opt.constraints}\n`;
+                            opt.constraints.forEach((c: string) => {
+                                if (c && String(c).trim()) {
+                                    formatted += `• ${c.trim()}\n`;
+                                }
+                            });
+                            formatted += '\n';
+                        } else if (opt.constraints && String(opt.constraints).trim()) {
+                            formatted += `**Constraints:**\n• ${opt.constraints}\n\n`;
                         }
-                        if (opt.output_format) formatted += `**Output Format:** ${opt.output_format}\n`;
-                        if (opt.evaluation_metrics && Array.isArray(opt.evaluation_metrics)) {
+                        if (opt.output_format) formatted += `**Output Format:** ${opt.output_format}\n\n`;
+                        if (opt.evaluation_metrics && Array.isArray(opt.evaluation_metrics) && opt.evaluation_metrics.length > 0) {
                             formatted += '**Evaluation Metrics:**\n';
-                            opt.evaluation_metrics.forEach((m: string) => formatted += `• ${m}\n`);
+                            opt.evaluation_metrics.forEach((m: string) => {
+                                if (m && String(m).trim()) {
+                                    formatted += `• ${m.trim()}\n`;
+                                }
+                            });
+                            formatted += '\n';
                         }
-                        if (opt.stop_condition) formatted += `**Stop Condition:** ${opt.stop_condition}\n`;
+                        if (opt.stop_condition) formatted += `**Stop Condition:** ${opt.stop_condition}\n\n`;
                     } else if (typeof opt === 'string') {
-                        formatted += `${opt}\n`;
+                        formatted += `${opt}\n\n`;
                     }
-                    formatted += '\n';
                 }
                 
                 // Deliver section
@@ -471,35 +512,52 @@ export function formatMasterLevelResponse(content: string | any): string {
                     if (deliver.evaluation_rubric) {
                         formatted += '**Evaluation Rubric:**\n\n';
                         const rubric = deliver.evaluation_rubric;
+                        const rubricItems: string[] = [];
+                        
                         if (rubric.clarity && Array.isArray(rubric.clarity)) {
-                            formatted += `**Clarity:** ${rubric.clarity[0]} - ${rubric.clarity[1]}\n\n`;
+                            rubricItems.push(`Clarity: ${rubric.clarity[0]} - ${rubric.clarity[1]}`);
                         }
                         if (rubric.completeness && Array.isArray(rubric.completeness)) {
-                            formatted += `**Completeness:** ${rubric.completeness[0]} - ${rubric.completeness[1]}\n\n`;
+                            rubricItems.push(`Completeness: ${rubric.completeness[0]} - ${rubric.completeness[1]}`);
                         }
                         if (rubric.specificity && Array.isArray(rubric.specificity)) {
-                            formatted += `**Specificity:** ${rubric.specificity[0]} - ${rubric.specificity[1]}\n\n`;
+                            rubricItems.push(`Specificity: ${rubric.specificity[0]} - ${rubric.specificity[1]}`);
                         }
                         if (rubric.faithfulness && Array.isArray(rubric.faithfulness)) {
-                            formatted += `**Faithfulness:** ${rubric.faithfulness[0]} - ${rubric.faithfulness[1]}\n\n`;
+                            rubricItems.push(`Faithfulness: ${rubric.faithfulness[0]} - ${rubric.faithfulness[1]}`);
                         }
+                        
+                        // Format as bullet points
+                        rubricItems.forEach(item => {
+                            formatted += `• ${item}\n`;
+                        });
+                        formatted += '\n';
                     }
                     
                     // Pro Tips
                     if (deliver.pro_tips && deliver.pro_tips.platform_specific) {
                         formatted += '**Pro Tips:**\n\n';
                         const proTips = deliver.pro_tips.platform_specific;
-                        if (proTips.gpt) formatted += `**GPT:** ${proTips.gpt}\n`;
-                        if (proTips.claude) formatted += `**Claude:** ${proTips.claude}\n`;
-                        if (proTips.gemini) formatted += `**Gemini:** ${proTips.gemini}\n`;
+                        const proTipItems: string[] = [];
+                        
+                        if (proTips.gpt) proTipItems.push(`GPT: ${proTips.gpt}`);
+                        if (proTips.claude) proTipItems.push(`Claude: ${proTips.claude}`);
+                        if (proTips.gemini) proTipItems.push(`Gemini: ${proTips.gemini}`);
+                        
+                        // Format as bullet points
+                        proTipItems.forEach(item => {
+                            formatted += `• ${item}\n`;
+                        });
                         formatted += '\n';
                     }
                     
                     // Iteration Checklist
-                    if (deliver.iteration_checklist && Array.isArray(deliver.iteration_checklist)) {
+                    if (deliver.iteration_checklist && Array.isArray(deliver.iteration_checklist) && deliver.iteration_checklist.length > 0) {
                         formatted += '**Iteration Checklist:**\n';
                         deliver.iteration_checklist.forEach((item: string) => {
-                            formatted += `• ${item}\n`;
+                            if (item && String(item).trim()) {
+                                formatted += `• ${item.trim()}\n`;
+                            }
                         });
                         formatted += '\n';
                     }
@@ -513,26 +571,30 @@ export function formatMasterLevelResponse(content: string | any): string {
                     }
                     
                     // Key Improvements
-                    if (deliver.key_improvements && Array.isArray(deliver.key_improvements)) {
+                    if (deliver.key_improvements && Array.isArray(deliver.key_improvements) && deliver.key_improvements.length > 0) {
                         formatted += '**Key Improvements:**\n';
                         deliver.key_improvements.forEach((improvement: string) => {
-                            formatted += `• ${improvement}\n`;
+                            if (improvement && String(improvement).trim()) {
+                                formatted += `• ${improvement.trim()}\n`;
+                            }
                         });
                         formatted += '\n';
                     }
                     
                     // Techniques Applied
-                    if (deliver.techniques_applied && Array.isArray(deliver.techniques_applied)) {
+                    if (deliver.techniques_applied && Array.isArray(deliver.techniques_applied) && deliver.techniques_applied.length > 0) {
                         formatted += '**Techniques Applied:**\n';
                         deliver.techniques_applied.forEach((tech: string) => {
-                            formatted += `• ${tech}\n`;
+                            if (tech && String(tech).trim()) {
+                                formatted += `• ${tech.trim()}\n`;
+                            }
                         });
                         formatted += '\n';
                     }
                     
                     // Execution Pro Tip
                     if (deliver.execution_pro_tip) {
-                        formatted += `**Execution Pro Tip:**\n${deliver.execution_pro_tip}\n`;
+                        formatted += `**Execution Pro Tip:**\n${deliver.execution_pro_tip}\n\n`;
                     }
                 }
                 
@@ -1308,11 +1370,25 @@ export const formatAssistantMessage = (content: string): string => {
                         if (item.context && String(item.context).trim()) {
                             parts.push(`**Context:** ${item.context}`);
                         }
-                        if (item.task && String(item.task).trim()) {
+                        if (item.task) {
+                            if (Array.isArray(item.task) && item.task.length > 0) {
+                                const tasks = item.task.filter((t: any) => t && String(t).trim()).map((t: string) => `• ${t}`).join('\n');
+                                if (tasks) {
+                                    parts.push(`**Task:**\n${tasks}`);
+                                }
+                            } else if (String(item.task).trim()) {
                             parts.push(`**Task:** ${item.task}`);
+                            }
                         }
-                        if (item.constraints && String(item.constraints).trim()) {
+                        if (item.constraints) {
+                            if (Array.isArray(item.constraints) && item.constraints.length > 0) {
+                                const constraints = item.constraints.filter((c: any) => c && String(c).trim()).map((c: string) => `• ${c}`).join('\n');
+                                if (constraints) {
+                                    parts.push(`**Constraints:**\n${constraints}`);
+                                }
+                            } else if (String(item.constraints).trim()) {
                             parts.push(`**Constraints:** ${item.constraints}`);
+                            }
                         }
 
                         // If we collected any structured parts, join them; otherwise fall back to JSON
@@ -1390,13 +1466,13 @@ export const formatAssistantMessage = (content: string): string => {
                         // Only pro tip exists, return content without header, then add share message
                         return `${String(parsed.pro_tip).trim()}\n\n---\n\n**💡 Want to share or reuse this prompt?**\n\n👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**\n\n*Jet helps professionals write, reason, and communicate better with AI.*`;
                     } else {
-                        sections.push(`**Pro Tip:**\n${parsed.pro_tip}`);
+                sections.push(`**Pro Tip:**\n${parsed.pro_tip}`);
                     }
-                }
-                
+            }
+            
                 // Add share message if provided, otherwise add default share message
                 if (parsed.share_message && String(parsed.share_message).trim()) {
-                    sections.push(parsed.share_message);
+                sections.push(parsed.share_message);
                 } else {
                     // Add default share message to all responses
                     sections.push('---');
@@ -1406,7 +1482,7 @@ export const formatAssistantMessage = (content: string): string => {
                     sections.push('👉 **[Share this Prompt →](https://www.jetpromptoptimizer.ai)**');
                     sections.push('');
                     sections.push('*Jet helps professionals write, reason, and communicate better with AI.*');
-                }
+            }
             
             // Handle sample_prompts - can be array, string, or object
             if (parsed.sample_prompts) {
