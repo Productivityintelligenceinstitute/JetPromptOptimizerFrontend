@@ -1,10 +1,12 @@
 export const APP_ROUTES = {
   home: "/",
-  features: "/features",
-  pricing: "/pricing",
-  docs: "/docs",
-  admin: "/admin",
+  features: "/#features",
+  pricing: "/#pricing",
+  resources: "/resources",
+  about: "/about",
   getStarted: "/get-started",
+  login: "/login",
+  signup: "/signup",
 } as const;
 
 export type AppRouteKey = keyof typeof APP_ROUTES;
@@ -20,8 +22,8 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { key: "home", label: "Home", href: APP_ROUTES.home },
   { key: "features", label: "Features", href: APP_ROUTES.features },
   { key: "pricing", label: "Pricing", href: APP_ROUTES.pricing },
-  { key: "docs", label: "Docs", href: APP_ROUTES.docs },
-  { key: "admin", label: "Admin", href: APP_ROUTES.admin },
+  { key: "resources", label: "Resources", href: APP_ROUTES.resources },
+  { key: "about", label: "About", href: APP_ROUTES.about },
 ];
 
 export const CTA_NAV_ITEM: NavItem = {

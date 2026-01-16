@@ -4,6 +4,7 @@ export default function StatsStrip() {
   return (
     <section className="bg-jet-blue py-10 sm:py-12">
       <div className="mx-auto max-w-5xl px-4">
+        <div className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 text-soft-white shadow-sm backdrop-blur-sm grid-cols-3 sm:p-8">
         <div className="grid gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 text-soft-white shadow-sm backdrop-blur-sm sm:grid-cols-3 sm:p-8">
           {STATS.map((stat) => (
             <div

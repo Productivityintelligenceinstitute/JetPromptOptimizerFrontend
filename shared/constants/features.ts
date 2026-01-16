@@ -7,30 +7,30 @@ export interface Feature {
 
 export const FEATURES: Feature[] = [
   {
-    title: "AI Powered Optimization",
+    title: "A System for Consistency",
     description:
-      "Leverage advanced AI to optimize your prompts for better performance and accuracy.",
+      "No more “try this prompt and hope for the best.” Every prompt can be measured, tracked, and improved over time.",
     icon: "/assets/icons/Frame.png",
     alt: "AI Optimization"
   },
   {
-    title: "Real-Time Testing",
+    title: "Speed + Savings",
     description:
-      "Test and compare different prompt versions instantly with our live testing environment.",
+      "Cut editing time and reduce costly iterations. Standardize quality so your team ships faster.",
     icon: "/assets/icons/timer.png",
     alt: "Real-Time Testing"
   },
   {
-    title: "Team Collaboration",
+    title: "Built-In Governance",
     description:
-      "Work together with your team to create and refine prompts collaboratively.",
+      "Ensure ethical AI with rubric scoring and audits. Add tone, bias, and compliance guardrails to keep outputs on-brand.",
     icon: "/assets/icons/group.png",
     alt: "Team Collaboration"
   },
   {
-    title: "Performance Analytics",
+    title: "Scalable Workflow",
     description:
-      "Track prompt performance with detailed analytics and insights.",
+      "Capture your best prompts once and share them across teams and tools. Build reusable workflows that scale with your organization.",
     icon: "/assets/icons/bar.png",
     alt: "Performance Analytics"
   }
