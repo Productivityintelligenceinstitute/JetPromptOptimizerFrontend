@@ -81,24 +81,31 @@ export default function ChatSessionPage() {
     const prevChatIdRef = useRef<string | undefined>(undefined);
     
     // Helper function to preserve static message when updating messages
+    // Now shows static message in all chats (new and existing)
     const preserveStaticMessage = (newMessages: Message[]): Message[] => {
-        const isNewChat = !chatId || chatId === 'new';
-        // Only preserve static message for new chats
-        if (!isNewChat) {
-            // For existing chats, remove static message if it exists
-            return newMessages.filter(msg => msg.id !== 'optimization-level-info');
-        }
-        
-        // For new chats, ensure static message is at the beginning
+        // Always show static message if we have optimization level and user
         if (!optimizationLevel || !user) {
             return newMessages.filter(msg => msg.id !== 'optimization-level-info');
         }
         
+        const expectedContent = generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role);
         const levelMessage: Message = {
             id: 'optimization-level-info',
             role: 'assistant',
-            content: generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role),
+            content: expectedContent,
         };
+        
+        // Check if static message already exists and is in the correct position
+        const firstMessage = newMessages[0];
+        if (firstMessage && firstMessage.id === 'optimization-level-info') {
+            // Static message is already at the beginning
+            // Only update if content changed
+            if (firstMessage.content !== expectedContent) {
+                return [levelMessage, ...newMessages.slice(1)];
+            }
+            // No change needed, return as-is to avoid re-render
+            return newMessages;
+        }
         
         // Remove any existing static messages first to avoid duplicates
         const withoutStatic = newMessages.filter(msg => msg.id !== 'optimization-level-info');
@@ -160,17 +167,37 @@ export default function ChatSessionPage() {
     }, []);
 
     useEffect(() => {
-        const isNewChat = !chatId || chatId === 'new';
-        const hasLevelMessage = messages.some(msg => msg.id === 'optimization-level-info');
-        
-        if (isNewChat && !hasLevelMessage && optimizationLevel !== null && user) {
-            // Use preserveStaticMessage to ensure no duplicates
-            setMessages((prev) => preserveStaticMessage(prev));
-        } else if (!isNewChat && hasLevelMessage) {
-            // Remove static message when loading existing chats
-            setMessages((prev) => prev.filter(msg => msg.id !== 'optimization-level-info'));
+        // Always show static message if we have optimization level and user
+        // Only run when level, user, or chatId changes, not when messages change
+        if (!optimizationLevel || !user) {
+            return; // Let preserveStaticMessage handle removal in other updates
         }
-    }, [chatId, optimizationLevel, user?.package_name, user]);
+        
+        // Add or update static message only when dependencies change
+        setMessages((prev) => {
+            const hasStatic = prev.some(msg => msg.id === 'optimization-level-info');
+            if (!hasStatic) {
+                // Add static message if it doesn't exist
+                return preserveStaticMessage(prev);
+            } else {
+                // Update static message if level or user changed
+                const currentStatic = prev.find(msg => msg.id === 'optimization-level-info');
+                const expectedContent = generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role);
+                // Only update if content changed
+                if (currentStatic && currentStatic.content !== expectedContent) {
+                    const newStatic: Message = {
+                        id: 'optimization-level-info',
+                        role: 'assistant',
+                        content: expectedContent,
+                    };
+                    return prev.map(msg => 
+                        msg.id === 'optimization-level-info' ? newStatic : msg
+                    );
+                }
+                return prev;
+            }
+        });
+    }, [chatId, optimizationLevel, user?.package_name, user?.role]);
 
     useEffect(() => {
         const loadMessages = async () => {
@@ -410,13 +437,25 @@ export default function ChatSessionPage() {
                 onCompleted: async (newChatId) => {
                     if (newChatId && newChatId !== 'undefined' && newChatId !== 'null') {
                         const isNewChat = !chatId;
-                    if (isNewChat) {
-                        setChatId(newChatId);
-                        const currentSearch = window.location.search || '';
-                        const newUrl = currentSearch
-                            ? `/chat/${newChatId}${currentSearch}`
-                            : `/chat/${newChatId}`;
-                        router.replace(newUrl);
+                        if (isNewChat) {
+                            // Update chatId state first
+                            setChatId(newChatId);
+                            
+                            // Update URL silently without causing navigation/re-render
+                            const currentSearch = window.location.search || '';
+                            const newPath = currentSearch
+                                ? `/chat/${newChatId}${currentSearch}`
+                                : `/chat/${newChatId}`;
+                            
+                            // Use window.history.replaceState to update URL without navigation
+                            // This prevents the glitch by avoiding a full page re-render
+                            if (typeof window !== 'undefined') {
+                                window.history.replaceState(
+                                    { ...window.history.state },
+                                    '',
+                                    newPath
+                                );
+                            }
                         }
                         try {
                             const response = await getChatMessages(newChatId);
