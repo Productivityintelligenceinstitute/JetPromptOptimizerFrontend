@@ -41,8 +41,13 @@ export function formatOptimizationResponse(parsed: any, level: OptimizationLevel
         sections.push(`**Changes Made:**\n${changes}`);
       }
     }
+    
+    // Add share message if provided, otherwise add default share message
     if (parsed.share_message && String(parsed.share_message).trim()) {
       sections.push(`**Share Message:**\n${parsed.share_message}`);
+    } else {
+      // Add default share message to all basic level responses
+      sections.push(getShareMessage());
     }
     
     // If no sections, return fallback
