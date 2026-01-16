@@ -1,26 +1,23 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import ChatArea from '@/shared/components/Chat/ChatArea';
 import ChatInput from '@/shared/components/Chat/ChatInput';
 import { Message } from '@/shared/types/chat';
-import { useOptimizePrompt, useOptimizeStructuredPrompt, useOptimizeMasterPrompt, useOptimizeSystemPrompt } from '@/shared/hooks/useChat';
 import { useAuth } from '@/shared/context/AuthContext';
-import { getChatMessages } from '@/shared/api/chat';
-import { getMyLibrary } from '@/shared/api/library';
+import { getChatMessages, deleteChat } from '@/shared/api/chat';
+import { getMyLibrary, addToLibrary } from '@/shared/api/library';
 import { logError } from '@/shared/utils/errorHandler';
-import { formatMessage, formatAssistantMessage, formatSystemLevelResponse, formatMasterLevelResponse } from '@/shared/utils/messageFormatter';
-import { ApiError } from '@/shared/types/errors';
+import { formatMessage, formatAssistantMessage, formatMasterLevelResponse, formatSystemLevelResponse } from '@/shared/utils/messageFormatter';
+import { detectOptimizationLevel, getLevelDisplayName, OPTIMIZATION_LEVELS, OptimizationLevel } from '@/shared/utils/optimizationLevel';
+import { generateOptimizationLevelMessage } from '@/shared/utils/optimizationLevelMessage';
 import UpgradeRequiredModal from '@/shared/components/Modal/UpgradeRequiredModal';
 import DailyLimitExceededModal from '@/shared/components/Modal/DailyLimitExceededModal';
 import SharePromptModal from '@/shared/components/Modal/SharePromptModal';
 import DeleteChatModal from '@/shared/components/Modal/DeleteChatModal';
-import { detectOptimizationLevel, getLevelDisplayName, OPTIMIZATION_LEVELS, OptimizationLevel } from '@/shared/utils/optimizationLevel';
-import { generateOptimizationLevelMessage } from '@/shared/utils/optimizationLevelMessage';
-import { addToLibrary } from '@/shared/api/library';
-import { deleteChat } from '@/shared/api/chat';
-import { useRouter } from 'next/navigation';
+import Notification from '@/shared/components/Notification/Notification';
+import { createOptimizationSocket, OptimizationLevelKey, formatOptimizationResponse } from '@/shared/services/optimizationSocket';
 
 export default function ChatSessionPage() {
     const params = useParams();
@@ -61,21 +58,12 @@ export default function ChatSessionPage() {
     const isStructuredLevel = effectiveLevel?.level === 'structured';
     const isMasteryLevel = effectiveLevel?.level === 'mastery';
     const isSystemLevel = effectiveLevel?.level === 'system';
-    const { mutate: optimize, isPending: isPendingBasic } = useOptimizePrompt();
-    const { mutate: optimizeStructured, isPending: isPendingStructured } = useOptimizeStructuredPrompt();
-    const { mutate: optimizeMaster, isPending: isPendingMaster } = useOptimizeMasterPrompt();
-    const { mutate: optimizeSystem, isPending: isPendingSystem } = useOptimizeSystemPrompt();
-    
-    const optimizeFn = isStructuredLevel ? optimizeStructured 
-        : isMasteryLevel ? optimizeMaster 
-        : isSystemLevel ? optimizeSystem 
-        : optimize;
-    const isPending = isStructuredLevel ? isPendingStructured 
-        : isMasteryLevel ? isPendingMaster 
-        : isSystemLevel ? isPendingSystem 
-        : isPendingBasic;
     const { user } = useAuth();
+    console.log({user});
     const chatAreaRef = useRef<HTMLDivElement>(null);
+    const wsRef = useRef<WebSocket | null>(null);
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [streamMessageId, setStreamMessageId] = useState<string | null>(null);
     
     const [showUpgradeModal, setShowUpgradeModal] = useState(false);
     const [showLimitModal, setShowLimitModal] = useState(false);
@@ -87,9 +75,44 @@ export default function ChatSessionPage() {
     const [isSharing, setIsSharing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [sharedMessageIds, setSharedMessageIds] = useState<Set<string>>(new Set());
+    const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
     
     // Track the previous chatId to detect when we're switching to a different chat
     const prevChatIdRef = useRef<string | undefined>(undefined);
+    
+    // Helper function to preserve static message when updating messages
+    // Now shows static message in all chats (new and existing)
+    const preserveStaticMessage = (newMessages: Message[]): Message[] => {
+        // Always show static message if we have optimization level and user
+        if (!optimizationLevel || !user) {
+            return newMessages.filter(msg => msg.id !== 'optimization-level-info');
+        }
+        
+        const expectedContent = generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role);
+        const levelMessage: Message = {
+            id: 'optimization-level-info',
+            role: 'assistant',
+            content: expectedContent,
+        };
+        
+        // Check if static message already exists and is in the correct position
+        const firstMessage = newMessages[0];
+        if (firstMessage && firstMessage.id === 'optimization-level-info') {
+            // Static message is already at the beginning
+            // Only update if content changed
+            if (firstMessage.content !== expectedContent) {
+                return [levelMessage, ...newMessages.slice(1)];
+            }
+            // No change needed, return as-is to avoid re-render
+            return newMessages;
+        }
+        
+        // Remove any existing static messages first to avoid duplicates
+        const withoutStatic = newMessages.filter(msg => msg.id !== 'optimization-level-info');
+        
+        // Add static message at the beginning
+        return [levelMessage, ...withoutStatic];
+    };
     
     // When switching to a different chat (not just setting chatId for the first time), reset chatLevel
     // This allows URL level to take priority when opening a new chat, but preserves level once chat is established
@@ -132,23 +155,53 @@ export default function ChatSessionPage() {
         };
         loadShared();
     }, [user?.user_id]);
+
+    // Clean up websocket on unmount
     useEffect(() => {
-        const isNewChat = !chatId || chatId === 'new';
-        const hasLevelMessage = messages.some(msg => msg.id === 'optimization-level-info');
-        
-        if (isNewChat && !hasLevelMessage && optimizationLevel !== null && user) {
-            const levelMessage: Message = {
-                id: 'optimization-level-info',
-                role: 'assistant',
-                content: generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role),
-            };
-            setMessages([levelMessage]);
+        return () => {
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        // Always show static message if we have optimization level and user
+        // Only run when level, user, or chatId changes, not when messages change
+        if (!optimizationLevel || !user) {
+            return; // Let preserveStaticMessage handle removal in other updates
         }
-    }, [chatId, optimizationLevel, user?.package_name, user]);
+        
+        // Add or update static message only when dependencies change
+        setMessages((prev) => {
+            const hasStatic = prev.some(msg => msg.id === 'optimization-level-info');
+            if (!hasStatic) {
+                // Add static message if it doesn't exist
+                return preserveStaticMessage(prev);
+            } else {
+                // Update static message if level or user changed
+                const currentStatic = prev.find(msg => msg.id === 'optimization-level-info');
+                const expectedContent = generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role);
+                // Only update if content changed
+                if (currentStatic && currentStatic.content !== expectedContent) {
+                    const newStatic: Message = {
+                        id: 'optimization-level-info',
+                        role: 'assistant',
+                        content: expectedContent,
+                    };
+                    return prev.map(msg => 
+                        msg.id === 'optimization-level-info' ? newStatic : msg
+                    );
+                }
+                return prev;
+            }
+        });
+    }, [chatId, optimizationLevel, user?.package_name, user?.role]);
 
     useEffect(() => {
         const loadMessages = async () => {
-            // Validate chatId before making API call
+            // Validate chatId before making the API call
             if (!chatId || chatId === 'new' || chatId === 'undefined' || chatId === 'null') {
                 return;
             }
@@ -156,28 +209,103 @@ export default function ChatSessionPage() {
             try {
                 setIsLoadingMessages(true);
                 const response = await getChatMessages(chatId);
+                
+                // Determine the optimization level for formatting
+                // First try to detect from the first assistant message
+                let detectedLevel: OptimizationLevelKey = 'basic';
+                const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
+                if (firstAssistant && firstAssistant.content) {
+                    try {
+                        const parsed = JSON.parse(firstAssistant.content);
+                        if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                            detectedLevel = 'mastery';
+                        } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                            // New system prompt structure or legacy format
+                            detectedLevel = 'system';
+                        } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                            detectedLevel = 'structured';
+                        }
+                    } catch {
+                        // Not JSON, use level detection
+                        const detected = detectOptimizationLevel(firstAssistant.content);
+                        if (detected) {
+                            detectedLevel = detected.level as OptimizationLevelKey;
+                        }
+                    }
+                }
+                
+                // Use effective level if available, otherwise use detected level
+                const levelKey: OptimizationLevelKey =
+                    isStructuredLevel ? 'structured' :
+                    isMasteryLevel ? 'mastery' :
+                    isSystemLevel ? 'system' :
+                    detectedLevel;
+                
                 const formattedMessages: Message[] = response.items
                     .reverse()
                     .map((msg: any) => {
                         const backendId = msg.id as string | undefined;
                         const isShared = !!backendId && sharedMessageIds.has(backendId);
+                        
+                        let content = msg.content;
+                        
+                        // For assistant messages, try to parse and format JSON according to level
+                        if (msg.role === 'assistant' && typeof content === 'string') {
+                            // Try to parse as JSON
+                            try {
+                                const parsed = JSON.parse(content);
+                                // Auto-detect level if not set, then format
+                                let actualLevel = levelKey;
+                                if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                                    actualLevel = 'mastery';
+                                } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                                    actualLevel = 'system';
+                                } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                                    actualLevel = 'structured';
+                                }
+                                
+                                // Format according to detected level
+                                if (actualLevel === 'mastery') {
+                                    content = formatMasterLevelResponse(parsed);
+                                } else if (actualLevel === 'system') {
+                                    content = formatSystemLevelResponse(parsed);
+                                } else {
+                                    content = formatOptimizationResponse(parsed, actualLevel);
+                                }
+                            } catch {
+                                // Not JSON, use formatMessage as fallback
+                                content = formatMessage(msg.role, content);
+                            }
+                        } else if (msg.role === 'assistant') {
+                            // Already an object, format it
+                            if (levelKey === 'mastery') {
+                                content = formatMasterLevelResponse(content);
+                            } else if (levelKey === 'system') {
+                                content = formatSystemLevelResponse(content);
+                            } else {
+                                content = formatOptimizationResponse(content, levelKey);
+                            }
+                        } else {
+                            // User messages - return as-is
+                            content = formatMessage(msg.role, content);
+                        }
+                        
                         return {
                             id: backendId || crypto.randomUUID(),
                         role: msg.role as 'user' | 'assistant',
-                        content: formatMessage(msg.role, msg.content),
+                            content: content,
                             messageId: backendId,
                             isShared,
                         };
                     });
-                setMessages(formattedMessages);
+                // Preserve static message when loading messages
+                setMessages(preserveStaticMessage(formattedMessages));
                 
                 // Detect level from raw content (before formatting) if we don't have a level yet
                 // Find the first assistant message in chronological order (before reverse)
                 if (!chatLevel && response.items.length > 0) {
-                    // Find first assistant message in original order (not reversed)
                     const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
                     if (firstAssistant && firstAssistant.content) {
-                        // Use raw content for detection (before formatting)
                         const detected = detectOptimizationLevel(firstAssistant.content);
                         if (detected && detected.level !== 'basic') {
                             setChatLevel(detected);
@@ -254,7 +382,7 @@ export default function ChatSessionPage() {
         }
     }, [messages]);
 
-    const handleSendMessage = (content: string) => {
+    const handleSendMessage = async (content: string) => {
         // Lock in the level for this chat if it's the first message and we don't have a level yet
         // This ensures the level persists for all subsequent messages in this chat
         if (!chatId && !chatLevel && effectiveLevel) {
@@ -267,121 +395,207 @@ export default function ChatSessionPage() {
             role: 'user',
             content,
         };
-        setMessages((prev) => [...prev, userMsg]);
+        setMessages((prev) => preserveStaticMessage([...prev, userMsg]));
 
         // Check authentication
         if (!user) {
             // Remove the optimistically added message
             setMessages((prev) => prev.slice(0, -1));
-            const errorMsg: Message = {
-                id: crypto.randomUUID(),
-                role: 'assistant',
-                content: "Please log in to use the chat feature.",
-            };
-            setMessages((prev) => [...prev, errorMsg]);
+            setNotification({
+                message: "Please log in to use the chat feature.",
+                type: 'error'
+            });
             return;
         }
 
-        optimizeFn(
-            {
-                user_prompt: content,
-                chat_id: chatId || undefined, // Only pass if chatId exists
-                user_id: user.user_id
-            },
-            {
-                onSuccess: async (data) => {
-                    // Validate chat_id before using it
-                    const newChatId = data.chat_id;
-                    const isNewChat = !chatId && newChatId && newChatId !== 'undefined' && newChatId !== 'null';
+        // Close any existing websocket before opening a new one
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
 
-                    if (isNewChat) {
-                        setChatId(newChatId);
-                        // Preserve current query params (including level) when moving from /chat/new to /chat/{id}
-                        const currentSearch = window.location.search || '';
-                        const newUrl = currentSearch
-                            ? `/chat/${newChatId}${currentSearch}`
-                            : `/chat/${newChatId}`;
-                        // Use Next.js router so params stay in sync instead of manual history.replaceState
-                        router.replace(newUrl);
+        setIsStreaming(true);
+        setStreamMessageId(null);
+
+        const levelKey: OptimizationLevelKey =
+            isStructuredLevel ? 'structured' :
+            isMasteryLevel ? 'mastery' :
+            isSystemLevel ? 'system' :
+            'basic';
+
+        const socket = createOptimizationSocket({
+            level: levelKey,
+            userId: user.user_id,
+            chatId: chatId || null,
+            userPrompt: content,
+            callbacks: {
+                onToken: (partialText) => {
+                    // Don't update UI with partial tokens during streaming
+                    // The isLoading prop on ChatArea will show the loading indicator
+                    // We'll only update the message when we have the final text
+                },
+                onCompleted: async (newChatId) => {
+                    if (newChatId && newChatId !== 'undefined' && newChatId !== 'null') {
+                        const isNewChat = !chatId;
+                        if (isNewChat) {
+                            // Update chatId state first
+                            setChatId(newChatId);
+                            
+                            // Update URL silently without causing navigation/re-render
+                            const currentSearch = window.location.search || '';
+                            const newPath = currentSearch
+                                ? `/chat/${newChatId}${currentSearch}`
+                                : `/chat/${newChatId}`;
+                            
+                            // Use window.history.replaceState to update URL without navigation
+                            // This prevents the glitch by avoiding a full page re-render
+                            if (typeof window !== 'undefined') {
+                                window.history.replaceState(
+                                    { ...window.history.state },
+                                    '',
+                                    newPath
+                                );
+                            }
+                        }
                         try {
                             const response = await getChatMessages(newChatId);
+                            
+                            // Determine the optimization level for formatting
+                            const levelKey: OptimizationLevelKey =
+                                isStructuredLevel ? 'structured' :
+                                isMasteryLevel ? 'mastery' :
+                                isSystemLevel ? 'system' :
+                                'basic';
+                            
                             const formattedMessages: Message[] = response.items
                                 .reverse()
                                 .map((msg: any) => {
                                     const backendId = msg.id as string | undefined;
                                     const isShared = !!backendId && sharedMessageIds.has(backendId);
+                                    
+                                    let content = msg.content;
+                                    
+                                    // For assistant messages, try to parse and format JSON according to level
+                                    if (msg.role === 'assistant' && typeof content === 'string') {
+                                        // Try to parse as JSON
+                                        try {
+                                            const parsed = JSON.parse(content);
+                                            // Auto-detect level from content structure
+                                            let actualLevel = levelKey;
+                                            if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                                                actualLevel = 'mastery';
+                                            } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                                                actualLevel = 'system';
+                                            } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                                                actualLevel = 'structured';
+                                            }
+                                            
+                                            // Format according to detected level
+                                            if (actualLevel === 'mastery') {
+                                                content = formatMasterLevelResponse(parsed);
+                                            } else if (actualLevel === 'system') {
+                                                content = formatSystemLevelResponse(parsed);
+                                            } else {
+                                                content = formatOptimizationResponse(parsed, actualLevel);
+                                            }
+                                        } catch {
+                                            // Not JSON, use formatMessage as fallback
+                                            content = formatMessage(msg.role, content);
+                                        }
+                                    } else if (msg.role === 'assistant') {
+                                        // Already an object, auto-detect level and format it
+                                        let actualLevel = levelKey;
+                                        if (content.overview || content.deconstruct || content.diagnose || content.develop || content.deliver) {
+                                            actualLevel = 'mastery';
+                                        } else if (content.system_prompt || content.key_enhancements || content.role || content.objective || content.audience || content.context) {
+                                            actualLevel = 'system';
+                                        } else if (content.techniques_applied || (content.optimized_prompt && typeof content.optimized_prompt === 'object')) {
+                                            actualLevel = 'structured';
+                                        }
+                                        
+                                        if (actualLevel === 'mastery') {
+                                            content = formatMasterLevelResponse(content);
+                                        } else if (actualLevel === 'system') {
+                                            content = formatSystemLevelResponse(content);
+                                        } else {
+                                            content = formatOptimizationResponse(content, actualLevel);
+                                        }
+                                    } else {
+                                        // User messages - return as-is
+                                        content = formatMessage(msg.role, content);
+                                    }
+                                    
                                     return {
                                         id: backendId || crypto.randomUUID(),
                                     role: msg.role as 'user' | 'assistant',
-                                    content: formatMessage(msg.role, msg.content),
+                                        content: content,
                                         messageId: backendId,
                                         isShared,
                                     };
                                 });
-                            setMessages(formattedMessages);
-                            return; // Exit early since we've loaded messages from backend
-                        } catch (error) {
-                            logError(error, 'ChatSessionPage.onSuccess.reloadMessages');
-                            // Fall through to add message optimistically if reload fails
+                            // Preserve static message when reloading after completion
+                            setMessages(preserveStaticMessage(formattedMessages));
+                        } catch (err) {
+                            logError(err, 'ChatSessionPage.ws.completed.reloadMessages');
                         }
                     }
-
-                    const response = data.response as any;
-                    let responseContent: string;
-                    
-                    if (isMasteryLevel) {
-                        responseContent = formatMasterLevelResponse(response);
-                    } else if (isSystemLevel) {
-                        responseContent = formatSystemLevelResponse(response);
-                    } else {
-                        // Convert response object to JSON string for formatAssistantMessage to parse
-                        // formatAssistantMessage handles all the formatting logic including JSON parsing
-                        const responseString = typeof response === 'string' 
-                            ? response 
-                            : JSON.stringify(response);
-                        responseContent = formatAssistantMessage(responseString);
-                    }
-
-                    const backendId = (data as any).message_id || (data.response as any)?.message_id;
-                    const isShared = !!backendId && sharedMessageIds.has(backendId);
-                    const aiResponse: Message = {
-                        // Prefer backend-provided id so share works; fallback to random UUID
-                        id: backendId || crypto.randomUUID(),
-                        role: 'assistant',
-                        content: responseContent,
-                        messageId: backendId, // keep backend id for sharing
-                        isShared,
-                    };
-                    setMessages((prev) => [...prev, aiResponse]);
+                    setIsStreaming(false);
                 },
-                onError: (error) => {
-                    setMessages((prev) => prev.slice(0, -1));
-                    
-                    if (error instanceof ApiError) {
-                        if (error.statusCode === 403) {
-                            const detectedLevel = detectOptimizationLevel(content);
-                            setFeatureName(detectedLevel.displayName);
-                            setShowUpgradeModal(true);
+                onFinalText: (finalText) => {
+                    if (!finalText) return;
+                    // Update the message with final formatted text
+                    setMessages((prev) => {
+                        let updated: Message[];
+                        if (!streamMessageId) {
+                            const newId = crypto.randomUUID();
+                            setStreamMessageId(newId);
+                            updated = [
+                                ...prev,
+                                {
+                                    id: newId,
+                                    role: 'assistant',
+                                    content: finalText,
+                                },
+                            ];
+                        } else {
+                            updated = prev.map((m) =>
+                                m.id === streamMessageId
+                                    ? { ...m, content: finalText }
+                                    : m
+                            );
+                        }
+                        // Preserve static message
+                        return preserveStaticMessage(updated);
+                    });
+                },
+                onError: (messageText) => {
+                    setIsStreaming(false);
+                    // Remove optimistic user message but preserve static message
+                    setMessages((prev) => preserveStaticMessage(prev.slice(0, -1)));
+                    // Show error in toast notification instead of chat
+                    setNotification({
+                        message: messageText || "Sorry, something went wrong while optimizing your prompt. Please try again.",
+                        type: 'error'
+                    });
+                },
+                onCancelled: () => {
+                    setIsStreaming(false);
+                },
+            },
+        });
+
+        if (!socket) {
+            // Socket creation failed (e.g., missing base URL) – revert optimistic user message
+            setIsStreaming(false);
+            setMessages((prev) => preserveStaticMessage(prev.slice(0, -1)));
+            setNotification({
+                message: "WebSocket endpoint is not configured. Please contact support.",
+                type: 'error'
+            });
                             return;
                         }
                         
-                        if (error.statusCode === 429) {
-                            const detectedLevel = detectOptimizationLevel(content);
-                            setFeatureName(detectedLevel.displayName);
-                            setShowLimitModal(true);
-                            return;
-                        }
-                    }
-                    
-                    const errorMsg: Message = {
-                        id: crypto.randomUUID(),
-                        role: 'assistant',
-                        content: "Sorry, something went wrong while optimizing your prompt. Please try again.",
-                    };
-                    setMessages((prev) => [...prev, errorMsg]);
-                },
-            }
-        );
+        wsRef.current = socket;
     };
 
     const handleShareClick = (promptContent: string, messageId: string) => {
@@ -389,7 +603,10 @@ export default function ChatSessionPage() {
         const message = messages.find(msg => msg.id === messageId || msg.messageId === messageId);
         const shareId = message?.messageId || message?.id;
         if (!shareId) {
-            alert('Unable to share: Message ID not found. Please try again.');
+            setNotification({
+                message: 'Unable to share: Message ID not found. Please try again.',
+                type: 'error'
+            });
             return;
         }
         
@@ -423,7 +640,10 @@ export default function ChatSessionPage() {
             router.push('/library');
         } catch (error: any) {
             console.error('Failed to share prompt:', error);
-            alert(error.message || 'Failed to share prompt. Please try again.');
+            setNotification({
+                message: error.message || 'Failed to share prompt. Please try again.',
+                type: 'error'
+            });
         } finally {
             setIsSharing(false);
         }
@@ -439,7 +659,10 @@ export default function ChatSessionPage() {
             router.push('/chat/new');
         } catch (error: any) {
             console.error('Failed to delete chat:', error);
-            alert(error.message || 'Failed to delete chat. Please try again.');
+            setNotification({
+                message: error.message || 'Failed to delete chat. Please try again.',
+                type: 'error'
+            });
         } finally {
             setIsDeleting(false);
         }
@@ -469,16 +692,24 @@ export default function ChatSessionPage() {
                 onConfirm={handleDeleteChat}
                 isLoading={isDeleting}
             />
+            {notification && (
+                <Notification
+                    message={notification.message}
+                    type={notification.type}
+                    onClose={() => setNotification(null)}
+                />
+            )}
             <ChatArea 
                 messages={messages} 
-                isLoading={isPending || isLoadingMessages} 
+                isLoading={isStreaming || isLoadingMessages} 
                 ref={chatAreaRef}
                 onShare={handleShareClick}
                 onGoToLibrary={(messageId: string) =>
                     router.push(`/library?message_id=${encodeURIComponent(messageId)}`)
                 }
             />
-            <ChatInput onSendMessage={handleSendMessage} isLoading={isPending} />
+            <ChatInput onSendMessage={handleSendMessage} isLoading={isStreaming} />
         </div>
     );
 }
+

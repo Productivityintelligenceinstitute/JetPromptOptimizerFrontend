@@ -102,8 +102,6 @@ export function generateOptimizationLevelMessage(
 
 ${levelDetails.description}
 
-**Query Limit:** ${queryLimit}
-
 **What You'll Get:**
 
 ${levelDetails.features.map(feature => `✓ ${feature}`).join('\n')}

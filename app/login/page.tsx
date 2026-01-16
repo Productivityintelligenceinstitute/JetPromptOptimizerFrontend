@@ -4,7 +4,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/shared/context/AuthContext';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
 import { LogoIcon } from '@/shared/components/icons/user-icons';
@@ -18,8 +17,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login, isLoading, user, isInitialized } = useAuth();
-  const router = useRouter();
+  const { login, isLoading } = useAuth();
   const [loginSuccess, setLoginSuccess] = useState(false);
   const {
     register,
@@ -33,9 +31,8 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     try {
       await login(data.email, data.password);
-      // Mark login as successful - wait for user sync to complete
+      // Mark login as successful - GuestGuard will handle redirect once user sync completes
       setLoginSuccess(true);
-      // The useEffect will handle the redirect once user is available
     } catch (error) {
       setError('root', { message: 'Invalid credentials' });
       setLoginSuccess(false);

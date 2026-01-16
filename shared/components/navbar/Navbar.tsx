@@ -143,8 +143,8 @@ export function Navbar() {
         const hash = href.slice(2);
         return activeSection === hash;
       }
-      // Resources is a separate page, not a section
-      if (href === APP_ROUTES.resources) {
+      // Resources and About are separate pages, not sections
+      if (href === APP_ROUTES.resources || href === APP_ROUTES.about) {
         return false; // Never active on home page
       }
     }
@@ -152,6 +152,7 @@ export function Navbar() {
     // For other routes, use pathname matching
     if (href === APP_ROUTES.home) return pathname === APP_ROUTES.home;
     if (href === APP_ROUTES.resources) return pathname === APP_ROUTES.resources;
+    if (href === APP_ROUTES.about) return pathname === APP_ROUTES.about;
     return pathname.startsWith(href);
   };
 

@@ -7,7 +7,10 @@ import AdminGuard from "@/shared/components/auth/AdminGuard";
 import { AdminNavbar } from "@/shared/components/navbar/AdminNavbar";
 import Pagination from "@/shared/components/admin/Pagination";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatAssistantMessage } from "@/shared/utils/messageFormatter";
+import { formatAssistantMessage, formatMasterLevelResponse, formatSystemLevelResponse } from "@/shared/utils/messageFormatter";
+import { formatOptimizationResponse } from "@/shared/services/optimizationSocket";
+import { markdownToPlainText, markdownToHTML } from "@/shared/utils/markdownToPlainText";
+import { OptimizationLevelKey } from "@/shared/types/chat";
 
 export default function AdminLibraryPage() {
   const { user } = useAuth();
@@ -52,13 +55,33 @@ export default function AdminLibraryPage() {
 
   const handleCopy = async (content: string, index: number) => {
     try {
-      await navigator.clipboard.writeText(content);
+      // Convert markdown to HTML for rich text formatting
+      const htmlContent = markdownToHTML(content);
+      const plainText = markdownToPlainText(content);
+      
+      // Use Clipboard API with both HTML and plain text formats
+      const clipboardItem = new ClipboardItem({
+        'text/html': new Blob([htmlContent], { type: 'text/html' }),
+        'text/plain': new Blob([plainText], { type: 'text/plain' })
+      });
+      
+      await navigator.clipboard.write([clipboardItem]);
       setCopiedPromptId(index);
       setTimeout(() => {
         setCopiedPromptId(null);
       }, 2000);
     } catch (err) {
-      console.error("Failed to copy text:", err);
+      // Fallback to plain text if HTML clipboard fails
+      try {
+        const plainText = markdownToPlainText(content);
+        await navigator.clipboard.writeText(plainText);
+        setCopiedPromptId(index);
+        setTimeout(() => {
+          setCopiedPromptId(null);
+        }, 2000);
+      } catch (fallbackErr) {
+        console.error("Failed to copy text:", fallbackErr);
+      }
     }
   };
 
@@ -161,7 +184,38 @@ export default function AdminLibraryPage() {
             <>
               <div className="grid grid-cols-1 gap-6 mb-6">
                 {prompts.map((prompt, index) => {
-                  const formattedContent = formatAssistantMessage(prompt.content);
+                  // Detect optimization level and format accordingly
+                  let formattedContent = prompt.content;
+                  if (typeof prompt.content === 'string') {
+                    try {
+                      const parsed = JSON.parse(prompt.content);
+                      // Auto-detect level from content structure
+                      let detectedLevel: OptimizationLevelKey = 'basic';
+                      
+                      if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                        detectedLevel = 'mastery';
+                      } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                        detectedLevel = 'system';
+                      } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                        detectedLevel = 'structured';
+                      }
+                      
+                      // Format according to detected level
+                      if (detectedLevel === 'mastery') {
+                        formattedContent = formatMasterLevelResponse(parsed);
+                      } else if (detectedLevel === 'system') {
+                        formattedContent = formatSystemLevelResponse(parsed);
+                      } else {
+                        formattedContent = formatOptimizationResponse(parsed, detectedLevel);
+                      }
+                    } catch {
+                      // Not valid JSON, use default formatter
+                      formattedContent = formatAssistantMessage(prompt.content);
+                    }
+                  } else {
+                    formattedContent = formatAssistantMessage(String(prompt.content));
+                  }
+                  
                   return (
                     <div
                       key={`${prompt.message_id}-${index}`}
@@ -185,7 +239,7 @@ export default function AdminLibraryPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleCopy(prompt.content, index)}
+                            onClick={() => handleCopy(formattedContent, index)}
                             className="p-2 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
                             title="Copy prompt"
                           >
