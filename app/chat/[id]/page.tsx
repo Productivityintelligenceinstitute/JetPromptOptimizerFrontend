@@ -80,6 +80,33 @@ export default function ChatSessionPage() {
     // Track the previous chatId to detect when we're switching to a different chat
     const prevChatIdRef = useRef<string | undefined>(undefined);
     
+    // Helper function to preserve static message when updating messages
+    const preserveStaticMessage = (newMessages: Message[]): Message[] => {
+        const isNewChat = !chatId || chatId === 'new';
+        // Only preserve static message for new chats
+        if (!isNewChat) {
+            // For existing chats, remove static message if it exists
+            return newMessages.filter(msg => msg.id !== 'optimization-level-info');
+        }
+        
+        // For new chats, ensure static message is at the beginning
+        if (!optimizationLevel || !user) {
+            return newMessages.filter(msg => msg.id !== 'optimization-level-info');
+        }
+        
+        const levelMessage: Message = {
+            id: 'optimization-level-info',
+            role: 'assistant',
+            content: generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role),
+        };
+        
+        // Remove any existing static messages first to avoid duplicates
+        const withoutStatic = newMessages.filter(msg => msg.id !== 'optimization-level-info');
+        
+        // Add static message at the beginning
+        return [levelMessage, ...withoutStatic];
+    };
+    
     // When switching to a different chat (not just setting chatId for the first time), reset chatLevel
     // This allows URL level to take priority when opening a new chat, but preserves level once chat is established
     useEffect(() => {
@@ -137,12 +164,11 @@ export default function ChatSessionPage() {
         const hasLevelMessage = messages.some(msg => msg.id === 'optimization-level-info');
         
         if (isNewChat && !hasLevelMessage && optimizationLevel !== null && user) {
-            const levelMessage: Message = {
-                id: 'optimization-level-info',
-                role: 'assistant',
-                content: generateOptimizationLevelMessage(optimizationLevel, user.package_name, user.role),
-            };
-            setMessages([levelMessage]);
+            // Use preserveStaticMessage to ensure no duplicates
+            setMessages((prev) => preserveStaticMessage(prev));
+        } else if (!isNewChat && hasLevelMessage) {
+            // Remove static message when loading existing chats
+            setMessages((prev) => prev.filter(msg => msg.id !== 'optimization-level-info'));
         }
     }, [chatId, optimizationLevel, user?.package_name, user]);
 
@@ -245,7 +271,8 @@ export default function ChatSessionPage() {
                             isShared,
                         };
                     });
-                setMessages(formattedMessages);
+                // Preserve static message when loading messages
+                setMessages(preserveStaticMessage(formattedMessages));
                 
                 // Detect level from raw content (before formatting) if we don't have a level yet
                 // Find the first assistant message in chronological order (before reverse)
@@ -341,7 +368,7 @@ export default function ChatSessionPage() {
             role: 'user',
             content,
         };
-        setMessages((prev) => [...prev, userMsg]);
+        setMessages((prev) => preserveStaticMessage([...prev, userMsg]));
 
         // Check authentication
         if (!user) {
@@ -467,7 +494,8 @@ export default function ChatSessionPage() {
                                         isShared,
                                     };
                                 });
-                            setMessages(formattedMessages);
+                            // Preserve static message when reloading after completion
+                            setMessages(preserveStaticMessage(formattedMessages));
                         } catch (err) {
                             logError(err, 'ChatSessionPage.ws.completed.reloadMessages');
                         }
@@ -478,10 +506,11 @@ export default function ChatSessionPage() {
                     if (!finalText) return;
                     // Update the message with final formatted text
                     setMessages((prev) => {
+                        let updated: Message[];
                         if (!streamMessageId) {
                             const newId = crypto.randomUUID();
                             setStreamMessageId(newId);
-                            return [
+                            updated = [
                                 ...prev,
                                 {
                                     id: newId,
@@ -489,18 +518,21 @@ export default function ChatSessionPage() {
                                     content: finalText,
                                 },
                             ];
+                        } else {
+                            updated = prev.map((m) =>
+                                m.id === streamMessageId
+                                    ? { ...m, content: finalText }
+                                    : m
+                            );
                         }
-                        return prev.map((m) =>
-                            m.id === streamMessageId
-                                ? { ...m, content: finalText }
-                                : m
-                        );
+                        // Preserve static message
+                        return preserveStaticMessage(updated);
                     });
                 },
                 onError: (messageText) => {
                     setIsStreaming(false);
-                    // Remove optimistic user message
-                    setMessages((prev) => prev.slice(0, -1));
+                    // Remove optimistic user message but preserve static message
+                    setMessages((prev) => preserveStaticMessage(prev.slice(0, -1)));
                     // Show error in toast notification instead of chat
                     setNotification({
                         message: messageText || "Sorry, something went wrong while optimizing your prompt. Please try again.",
@@ -516,7 +548,7 @@ export default function ChatSessionPage() {
         if (!socket) {
             // Socket creation failed (e.g., missing base URL) – revert optimistic user message
             setIsStreaming(false);
-            setMessages((prev) => prev.slice(0, -1));
+            setMessages((prev) => preserveStaticMessage(prev.slice(0, -1)));
             setNotification({
                 message: "WebSocket endpoint is not configured. Please contact support.",
                 type: 'error'

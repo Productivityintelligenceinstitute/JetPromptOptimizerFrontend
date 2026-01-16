@@ -34,19 +34,23 @@ export const markdownToPlainText = (content: string): string => {
         
         // Handle bullet points - preserve the • character and bold formatting (matches UI)
         if (trimmedLine.startsWith('•')) {
-            // Preserve bold markdown and bullet, only remove links
+            // Preserve bold markdown and bullet, show links with URL
             let bulletContent = trimmedLine;
-            // Remove links but keep text
-            bulletContent = bulletContent.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+            // Handle bold links first: **[text](url)** -> **text → url**
+            bulletContent = bulletContent.replace(/\*\*\[([^\]]+)\]\(([^\)]+)\)\*\*/g, '**$1 → $2**');
+            // Handle regular links: [text](url) -> text → url
+            bulletContent = bulletContent.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '$1 → $2');
             processedLines.push(bulletContent);
             continue;
         }
         
-        // Handle lines with arrows (→) - preserve the arrow and bold formatting
+        // Handle lines with arrows (→) - preserve the arrow, bold formatting, and show URL prominently
         if (trimmedLine.includes('→')) {
             let arrowLine = trimmedLine;
-            // Remove links but keep text and bold formatting
-            arrowLine = arrowLine.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+            // Handle bold links first: **[text](url)** -> **text → url**
+            arrowLine = arrowLine.replace(/\*\*\[([^\]]+)\]\(([^\)]+)\)\*\*/g, '**$1 → $2**');
+            // Handle regular links: [text](url) -> text → url
+            arrowLine = arrowLine.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '$1 → $2');
             processedLines.push(arrowLine);
             continue;
         }
@@ -57,11 +61,13 @@ export const markdownToPlainText = (content: string): string => {
             continue;
         }
         
-        // Regular lines - preserve bold formatting, remove only links and code
+        // Regular lines - preserve bold formatting, show links with URL
         let processedLine = trimmedLine;
         
-        // Remove markdown links but keep the text: [text](url) -> text
-        processedLine = processedLine.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+        // Handle bold links first: **[text](url)** -> **text → url**
+        processedLine = processedLine.replace(/\*\*\[([^\]]+)\]\(([^\)]+)\)\*\*/g, '**$1 → $2**');
+        // Handle regular links: [text](url) -> text → url
+        processedLine = processedLine.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '$1 → $2');
         
         // Preserve bold markdown: **text** stays as **text** (for markdown-aware editors)
         // Don't remove bold formatting - keep it as is
@@ -135,19 +141,35 @@ export const markdownToHTML = (content: string): string => {
             let bulletContent = trimmedLine;
             // Process links BEFORE other processing (convert to HTML <a> tags)
             const linkPlaceholders: Array<{placeholder: string, text: string, url: string}> = [];
+            
+            // Handle bold links first: **[text](url)**
+            bulletContent = bulletContent.replace(/\*\*\[([^\]]+)\]\(([^\)]+)\)\*\*/g, (match, text, url) => {
+                const placeholder = `__BOLDLINK_${linkPlaceholders.length}__`;
+                linkPlaceholders.push({ placeholder, text, url });
+                return placeholder;
+            });
+            
+            // Handle regular links: [text](url)
             bulletContent = bulletContent.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, (match, text, url) => {
                 const placeholder = `__LINK_${linkPlaceholders.length}__`;
                 linkPlaceholders.push({ placeholder, text, url });
                 return placeholder;
             });
+            
             // Remove bold markdown from bullet points (only headings should be bold)
             bulletContent = bulletContent.replace(/\*\*([^*]+)\*\*/g, '$1');
-            // Escape HTML
+            
+            // Escape HTML (this won't affect our placeholders)
             bulletContent = escapeHTML(bulletContent);
-            // Replace link placeholders with HTML <a> tags
+            
+            // Replace link placeholders with HTML <a> tags - make URL visible in link text
             linkPlaceholders.forEach(({ placeholder, text, url }) => {
-                bulletContent = bulletContent.replace(placeholder, `<a href="${escapeHTML(url)}">${escapeHTML(text)}</a>`);
+                // Include URL in link text to make it visible
+                const linkText = text.includes('→') ? `${escapeHTML(text)} ${escapeHTML(url)}` : `${escapeHTML(text)} → ${escapeHTML(url)}`;
+                const linkHTML = `<a href="${escapeHTML(url)}">${linkText}</a>`;
+                bulletContent = bulletContent.replace(placeholder, linkHTML);
             });
+            
             processedLines.push(bulletContent);
             continue;
         }
@@ -155,20 +177,37 @@ export const markdownToHTML = (content: string): string => {
         // Handle lines with arrows (often contains links)
         if (trimmedLine.includes('→')) {
             let arrowLine = trimmedLine;
-            // Handle links (remove bold from links, only headings should be bold)
+            // Use placeholders to protect links from escaping
+            const linkPlaceholders: Array<{placeholder: string, text: string, url: string}> = [];
+            
+            // Handle bold links first: **[text](url)**
             arrowLine = arrowLine.replace(/\*\*\[([^\]]+)\]\(([^\)]+)\)\*\*/g, (match, text, url) => {
-                return `<a href="${escapeHTML(url)}">${escapeHTML(text)}</a>`;
+                const placeholder = `__BOLDLINK_${linkPlaceholders.length}__`;
+                linkPlaceholders.push({ placeholder, text, url });
+                return placeholder;
             });
-            // Handle regular links (not in bold)
+            
+            // Handle regular links: [text](url)
             arrowLine = arrowLine.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, (match, text, url) => {
-                return `<a href="${escapeHTML(url)}">${escapeHTML(text)}</a>`;
+                const placeholder = `__LINK_${linkPlaceholders.length}__`;
+                linkPlaceholders.push({ placeholder, text, url });
+                return placeholder;
             });
+            
             // Remove remaining bold markdown (only headings should be bold)
             arrowLine = arrowLine.replace(/\*\*([^*]+)\*\*/g, '$1');
-            // Escape HTML
+            
+            // Escape HTML (this won't affect our placeholders)
             arrowLine = escapeHTML(arrowLine);
-            // Unescape the link HTML we just created
-            arrowLine = arrowLine.replace(/&lt;a href=&quot;([^&]+)&quot;&gt;([^&]+)&lt;\/a&gt;/g, '<a href="$1">$2</a>');
+            
+            // Replace placeholders with actual HTML links - make URL visible in link text
+            linkPlaceholders.forEach(({ placeholder, text, url }) => {
+                // Include URL in link text to make it visible: "text → url" (text already has →)
+                const linkText = text.includes('→') ? `${escapeHTML(text)} ${escapeHTML(url)}` : `${escapeHTML(text)} → ${escapeHTML(url)}`;
+                const linkHTML = `<a href="${escapeHTML(url)}">${linkText}</a>`;
+                arrowLine = arrowLine.replace(placeholder, linkHTML);
+            });
+            
             processedLines.push(arrowLine);
             continue;
         }
@@ -185,6 +224,15 @@ export const markdownToHTML = (content: string): string => {
         
         // Process links BEFORE other processing (convert to HTML <a> tags)
         const linkPlaceholders: Array<{placeholder: string, text: string, url: string}> = [];
+        
+        // Handle bold links first: **[text](url)**
+        processedLine = processedLine.replace(/\*\*\[([^\]]+)\]\(([^\)]+)\)\*\*/g, (match, text, url) => {
+            const placeholder = `__BOLDLINK_${linkPlaceholders.length}__`;
+            linkPlaceholders.push({ placeholder, text, url });
+            return placeholder;
+        });
+        
+        // Handle regular links: [text](url)
         processedLine = processedLine.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, (match, text, url) => {
             const placeholder = `__LINK_${linkPlaceholders.length}__`;
             linkPlaceholders.push({ placeholder, text, url });
@@ -211,13 +259,16 @@ export const markdownToHTML = (content: string): string => {
             return placeholder;
         });
         
-        // Escape HTML
+        // Escape HTML (this won't affect our placeholders)
         processedLine = escapeHTML(processedLine);
         
         // Replace placeholders with HTML tags
-        // Replace links first (before other formatting)
+        // Replace links first (before other formatting) - make URL visible in link text
         linkPlaceholders.forEach(({ placeholder, text, url }) => {
-            processedLine = processedLine.replace(placeholder, `<a href="${escapeHTML(url)}">${escapeHTML(text)}</a>`);
+            // Include URL in link text to make it visible
+            const linkText = text.includes('→') ? `${escapeHTML(text)} ${escapeHTML(url)}` : `${escapeHTML(text)} → ${escapeHTML(url)}`;
+            const linkHTML = `<a href="${escapeHTML(url)}">${linkText}</a>`;
+            processedLine = processedLine.replace(placeholder, linkHTML);
         });
         // Don't add bold tags for regular text - only headings are bold
         italicPlaceholders.forEach((text, index) => {
