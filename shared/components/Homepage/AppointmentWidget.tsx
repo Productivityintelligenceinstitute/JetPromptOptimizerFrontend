@@ -21,11 +21,16 @@ function extractDeliverText(answer: string): string {
 }
 
 export default function AppointmentWidget() {
+  const initialBotMessage =
+    "Welcome to Jet Prompt Optimizer.\nI’m JetPilot — (your precision prompt architect - “You’re in control, Jet guides.”)\nWhether you’re drafting content, analyzing data, planning strategy, or building AI workflows, I help you turn rough ideas into clear, high-impact prompts that deliver better results from AI — faster and with less trial-and-error.\nJust share what you’re trying to accomplish or want to learn about prompting (even if it’s vague); I’ll handle the structure, clarity, and optimization for you.";
+
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    { id: 1, from: "bot", text: initialBotMessage },
+  ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const nextId = useRef(3);
+  const nextId = useRef(2);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -84,7 +89,7 @@ export default function AppointmentWidget() {
 
           <div className="px-4 py-3 border-b border-gray-200 bg-jet-blue text-white rounded-t-xl">
             <h2 className="text-sm font-semibold">
-             Jet Prompt Optimizer
+              JetPilot
             </h2>
           </div>
 
@@ -158,7 +163,7 @@ export default function AppointmentWidget() {
       <button
         type="button"
         onClick={handleToggle}
-        aria-label={isOpen ? "Minimize appointment assistant" : "Open appointment assistant"}
+        aria-label={isOpen ? "Minimize JetPilot assistant" : "Open JetPilot assistant"}
         className="h-14 w-14 rounded-full bg-jet-blue text-white shadow-lg flex items-center justify-center hover:bg-jet-blue/90 transition-colors"
       >
         {isOpen ? (

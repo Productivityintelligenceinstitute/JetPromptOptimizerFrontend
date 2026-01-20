@@ -75,7 +75,11 @@ const Footer = () => {
 
                 {/* Bottom Section: Copyright & Legal */}
                 <div className="border-t border-[#FF541F] pt-6 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-100">
-                    <p>Copyright © {new Date().getFullYear()} All Rights Reserved.</p>
+                    <div className="flex flex-col items-center md:items-start gap-1 text-center md:text-left">
+                        <p>Copyright © {new Date().getFullYear()} All Rights Reserved.</p>
+                        <p>USPTO: Provisional Patent #63/912,406</p>
+                        <p>METHODS AND SYSTEMS FOR OPTIMIZING A NATURAL LANGUAGE PROMPT</p>
+                    </div>
                     <div className="flex gap-8">
                         <FooterLink href="#">• Term & Conditions</FooterLink>
                         <FooterLink href="#">• Privacy & Policy</FooterLink>
