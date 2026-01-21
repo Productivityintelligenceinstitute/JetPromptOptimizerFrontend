@@ -434,6 +434,22 @@ export default function AboutPage() {
           </div>
         </section>
 
+        {/* Educational Partners Visual */}
+        <section className="rounded-3xl shadow-lg bg-white border border-gray-100">
+          <div className="relative max-w-5xl mx-auto px-2 md:px-4 py-3 md:py-1">
+            <div className="relative w-full h-[220px] md:h-[280px] rounded-2xl overflow-hidden bg-gray-50">
+            <ImageWithFallback
+              src="/assets/about/educational-partners.png"
+              alt="Educational partners"
+              fill
+              className="object-contain p-4 md:p-6"
+              sizes="(max-width: 1280px) 100vw, 80vw"
+              placeholderText="Educational partners"
+            />
+          </div>
+          </div>
+        </section>
+
         {/* Executive Education Accordions */}
         <section className="space-y-4">
           <h3 className="text-xl md:text-2xl font-semibold text-jet-blue">

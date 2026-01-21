@@ -65,6 +65,19 @@ export default function PricingCallout() {
           <div className="relative flex justify-center hidden md:block ">
             <div className="relative w-72 sm:w-72 md:w-80 lg:w-full h-[492px] aspect-square rounded-2xl bg-white p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex items-center justify-center">
               <CalloutIcon className="h-10 w-10 sm:h-12 sm:w-12 md:h-16 md:w-16" />
+              {/* Center overlay to reflect updated metric */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex items-center justify-center rounded-full bg-white w-28 h-28 md:w-36 md:h-36 shadow-sm">
+                  <div className="text-center space-y-1">
+                    <div className="text-2xl md:text-3xl font-semibold text-[#ED6730] leading-tight">
+                      10x
+                    </div>
+                    <div className="text-sm md:text-base font-medium text-gray-700">
+                      Faster
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Background decorative blur */}

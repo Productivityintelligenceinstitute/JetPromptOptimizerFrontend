@@ -93,18 +93,36 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading || loginSuccess}
-            className="w-full inline-flex items-center justify-center rounded-md bg-jet-blue px-4 py-2 text-sm font-medium text-soft-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-jet-blue px-4 py-2 text-sm font-medium text-soft-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 disabled:opacity-60"
+            aria-live="polite"
           >
-            {loginSuccess ? 'Signing you in...' : isLoading ? 'Signing in...' : 'Sign In'}
+            {(isLoading || loginSuccess) && (
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white"
+                aria-hidden="true"
+              />
+            )}
+            <span>
+              {loginSuccess ? 'Signing you in...' : isLoading ? 'Signing in...' : 'Sign In'}
+            </span>
           </button>
         </form>
 
         <div className="text-center">
           <p className="text-sm text-gray-700">
             Don't have an account?{' '}
-            <Link href="/signup" className="font-medium text-signal-orange hover:text-signal-orange/80">
-              Sign up
-            </Link>
+            {isLoading || loginSuccess ? (
+              <span className="font-medium text-gray-400 cursor-not-allowed">
+                Sign up
+              </span>
+            ) : (
+              <Link
+                href="/signup"
+                className="font-medium text-signal-orange hover:text-signal-orange/80"
+              >
+                Sign up
+              </Link>
+            )}
           </p>
         </div>
       </div>

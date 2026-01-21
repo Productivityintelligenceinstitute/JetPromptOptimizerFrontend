@@ -17,14 +17,14 @@ export default function GuestGuard({ children, redirectTo = "/chat" }: GuestGuar
 
   useEffect(() => {
     // Only redirect once - prevent multiple redirects
-    if (isInitialized && !isLoading && user && !redirectingRef.current) {
+    if (isInitialized && user && !redirectingRef.current) {
       redirectingRef.current = true;
       router.replace(redirectTo);
     }
-  }, [user, isInitialized, isLoading, redirectTo, router]);
+  }, [user, isInitialized, redirectTo, router]);
 
   // While auth is initializing, show loading spinner instead of blank screen
-  if (!isInitialized || isLoading) {
+  if (!isInitialized) {
     return (
       <div className="flex h-screen items-center justify-center bg-soft-white">
         <LoadingSpinner size="lg" />

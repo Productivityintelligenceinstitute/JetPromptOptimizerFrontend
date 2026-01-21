@@ -135,8 +135,8 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
     };
 
     return (
-        <div ref={ref} className="flex-1 overflow-y-auto p-4">
-            <div className="mx-auto max-w-3xl space-y-8">
+        <div ref={ref} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 bg-white">
+            <div className="w-full max-w-full md:max-w-3xl md:mx-auto space-y-5 sm:space-y-7">
                 {messages.map((message) => (
                     <div
                         key={message.id}
@@ -151,7 +151,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                         )}
 
                         <div
-                            className={`group relative max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
+                            className={`group relative max-w-[96%] sm:max-w-[88%] md:max-w-[80%] rounded-2xl px-3 py-3 sm:px-4 ${message.role === 'user'
                                 ? 'bg-gray-100 text-gray-900'
                                 : 'bg-transparent text-gray-900 pr-12'
                                 }`}

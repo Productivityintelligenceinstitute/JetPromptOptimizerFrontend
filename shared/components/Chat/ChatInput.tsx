@@ -50,8 +50,8 @@ export default function ChatInput({ onSendMessage, initialValue = '', placeholde
     };
 
     return (
-        <div className="p-4">
-            <div className="mx-auto max-w-3xl">
+        <div className="p-3 sm:p-4 bg-white">
+            <div className="w-full max-w-full md:max-w-3xl md:mx-auto">
                 <form onSubmit={handleSubmit} className="relative">
                     <textarea
                         ref={textareaRef}

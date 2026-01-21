@@ -185,15 +185,17 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             />
             <div
                 className={cn(
-                    "fixed inset-y-0 left-0 z-50 flex flex-col bg-gray-900 text-white transition-all duration-300 ease-in-out",
-                    isOpen ? "w-64" : "w-16"
+                    "fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-900 text-white transition-all duration-300 ease-in-out transform",
+                    isOpen
+                        ? "translate-x-0 w-72 md:w-64"
+                        : "-translate-x-full md:translate-x-0 md:w-16 w-0"
                 )}
             >
             {/* Toggle button - always visible, left-aligned */}
             <div className="flex items-center p-4">
                 <button
                     onClick={toggleSidebar}
-                    className="rounded-md p-2 hover:bg-gray-800 focus:outline-none flex items-center justify-center"
+                    className="rounded-md p-2 hover:bg-gray-800 focus:outline-none flex items-center justify-center text-white"
                     title={isOpen ? "Close sidebar" : "Open sidebar"}
                 >
                     <PanelLeftClose className={cn(

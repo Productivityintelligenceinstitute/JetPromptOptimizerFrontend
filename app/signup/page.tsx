@@ -130,18 +130,36 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={isLoading || signupSuccess}
-            className="w-full inline-flex items-center justify-center rounded-md bg-jet-blue px-4 py-2 text-sm font-medium text-soft-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-jet-blue px-4 py-2 text-sm font-medium text-soft-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 disabled:opacity-60"
+            aria-live="polite"
           >
-            {signupSuccess ? 'Signing you in...' : isLoading ? 'Creating account...' : 'Create Account'}
+            {(isLoading || signupSuccess) && (
+              <span
+                className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white"
+                aria-hidden="true"
+              />
+            )}
+            <span>
+              {signupSuccess ? 'Signing you in...' : isLoading ? 'Creating account...' : 'Create Account'}
+            </span>
           </button>
           </form>
 
           <div className="text-center">
           <p className="text-sm text-gray-700">
             Already have an account?{' '}
-            <Link href="/login" className="font-medium text-signal-orange hover:text-signal-orange/80">
-              Login
-            </Link>
+            {isLoading || signupSuccess ? (
+              <span className="font-medium text-gray-400 cursor-not-allowed">
+                Login
+              </span>
+            ) : (
+              <Link
+                href="/login"
+                className="font-medium text-signal-orange hover:text-signal-orange/80"
+              >
+                Login
+              </Link>
+            )}
           </p>
         </div>
       </div>

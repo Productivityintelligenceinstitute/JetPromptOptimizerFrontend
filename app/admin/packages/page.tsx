@@ -8,7 +8,7 @@ import Pagination from '@/shared/components/admin/Pagination';
 import {
     getPackages,
     getPermissions,
-    getPackagePermissionsByPackageName,
+    getPackagePermissionsByPackageId,
     createPackage,
     deletePackage,
     assignPermissionToPackage,
@@ -23,7 +23,7 @@ interface PermissionDisplay extends Permission {
 }
 
 interface PackagePermission {
-    permission_id: number;
+    permission_id: string; // UUID
     is_enabled: boolean;
     query_limit: number | null;
 }
@@ -66,13 +66,13 @@ export default function AdminPackagesPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [editingPackageId, setEditingPackageId] = useState<number | null>(null);
+    const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
     const [newPackageName, setNewPackageName] = useState('');
     const [editPackageName, setEditPackageName] = useState('');
     const [isCustom, setIsCustom] = useState(true);
     const [editIsCustom, setEditIsCustom] = useState(true);
-    const [selectedPermissions, setSelectedPermissions] = useState<Record<number, PackagePermission>>({});
-    const [editSelectedPermissions, setEditSelectedPermissions] = useState<Record<number, PackagePermission>>({});
+    const [selectedPermissions, setSelectedPermissions] = useState<Record<string, PackagePermission>>({});
+    const [editSelectedPermissions, setEditSelectedPermissions] = useState<Record<string, PackagePermission>>({});
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
@@ -109,27 +109,24 @@ export default function AdminPackagesPage() {
 
     const handleEditPackage = async (pkg: Package) => {
         try {
-            setEditingPackageId(pkg.package_id);
+            setEditingPackageId(pkg.id);
             setEditPackageName(pkg.package_name);
             setEditIsCustom(pkg.is_custom);
             setIsEditing(true);
             setError(null);
             setSuccess(null);
             
-            // Load permissions for this package by package name
-            const packagePermissions = await getPackagePermissionsByPackageName(pkg.package_name);
+            // Load permissions for this package by package id
+            const packagePermissions = await getPackagePermissionsByPackageId(pkg.id);
             
-            // Map to edit permissions state - need to find permission_id from permission_name
-            const permissionsMap: Record<number, PackagePermission> = {};
+            // Map to edit permissions state using permission UUIDs
+            const permissionsMap: Record<string, PackagePermission> = {};
             packagePermissions.forEach(pp => {
-                const permission = permissions.find(p => p.permission_name === pp.permission_name);
-                if (permission) {
-                    permissionsMap[permission.permission_id] = {
-                        permission_id: permission.permission_id,
-                        is_enabled: pp.is_enabled,
-                        query_limit: pp.query_limit,
-                    };
-                }
+                permissionsMap[pp.permission_id] = {
+                    permission_id: pp.permission_id,
+                    is_enabled: pp.is_enabled,
+                    query_limit: pp.query_limit,
+                };
             });
             
             setEditSelectedPermissions(permissionsMap);
@@ -169,51 +166,43 @@ export default function AdminPackagesPage() {
             setSuccess(null);
             
             // Get current package and its permissions
-            const originalPackage = packages.find(p => p.package_id === editingPackageId);
+            const originalPackage = packages.find(p => p.id === editingPackageId);
             if (!originalPackage) {
                 setError('Package not found');
                 return;
             }
             
-            const currentPermissions = await getPackagePermissionsByPackageName(originalPackage.package_name);
+            const currentPermissions = await getPackagePermissionsByPackageId(originalPackage.id);
             
-            // Map current permissions by permission_name for comparison
-            const currentPermissionNames = new Set(currentPermissions.map(p => p.permission_name));
-            const newPermissionNames = new Set(
-                enabledPermissions.map(p => {
-                    const perm = permissions.find(per => per.permission_id === p.permission_id);
-                    return perm?.permission_name;
-                }).filter(Boolean) as string[]
-            );
+            // Map current permissions by permission_id for comparison
+            const currentPermissionIds = new Set(currentPermissions.map(p => p.permission_id));
+            const newPermissionIds = new Set(enabledPermissions.map(p => p.permission_id));
             
             // Remove permissions that are no longer enabled
             const permissionsToRemove = currentPermissions.filter(
-                p => !newPermissionNames.has(p.permission_name)
+                p => !newPermissionIds.has(p.permission_id)
             );
             
             // Add or update permissions
             const permissionsToAdd = enabledPermissions.filter(
                 p => {
-                    const perm = permissions.find(per => per.permission_id === p.permission_id);
+                    const perm = permissions.find(per => per.id === p.permission_id);
                     if (!perm) return false;
-                    const currentPerm = currentPermissions.find(cp => cp.permission_name === perm.permission_name);
+                    const currentPerm = currentPermissions.find(cp => cp.permission_id === perm.id);
                     return !currentPerm || 
                         currentPerm.is_enabled !== p.is_enabled ||
                         currentPerm.query_limit !== p.query_limit;
                 }
             );
             
-            // Remove old permissions (need to find package_id and permission_id for delete endpoint)
+            // Remove old permissions (backend expects package id and permission id for delete endpoint)
             for (const permToRemove of permissionsToRemove) {
-                const perm = permissions.find(p => p.permission_name === permToRemove.permission_name);
-                if (perm) {
-                    await removePermissionFromPackage(editingPackageId, perm.permission_id);
-                }
+                await removePermissionFromPackage(editingPackageId, permToRemove.permission_id);
             }
             
             // Add/update permissions using package_name and permission_name
             for (const perm of permissionsToAdd) {
-                const permission = permissions.find(p => p.permission_id === perm.permission_id);
+                const permission = permissions.find(p => p.id === perm.permission_id);
                 if (permission) {
                     await assignPermissionToPackage({
                         package_name: editPackageName.trim(),
@@ -245,7 +234,7 @@ export default function AdminPackagesPage() {
         }
     };
 
-    const handlePermissionToggle = (permissionId: number, enabled: boolean, isEdit: boolean = false) => {
+    const handlePermissionToggle = (permissionId: string, enabled: boolean, isEdit: boolean = false) => {
         if (isEdit) {
             setEditSelectedPermissions(prev => ({
                 ...prev,
@@ -267,7 +256,7 @@ export default function AdminPackagesPage() {
         }
     };
 
-    const handleQueryLimitChange = (permissionId: number, value: string, isEdit: boolean = false) => {
+    const handleQueryLimitChange = (permissionId: string, value: string, isEdit: boolean = false) => {
         const limit = value === '' ? null : parseInt(value, 10);
         if (limit !== null && (isNaN(limit) || limit < 0)) {
             return;
@@ -319,7 +308,7 @@ export default function AdminPackagesPage() {
             
             // Step 2: Assign permissions to the package using package_name and permission_name
             for (const perm of enabledPermissions) {
-                const permission = permissions.find(p => p.permission_id === perm.permission_id);
+                const permission = permissions.find(p => p.id === perm.permission_id);
                 if (permission) {
                     await assignPermissionToPackage({
                         package_name: newPackage.package_name,
@@ -344,7 +333,7 @@ export default function AdminPackagesPage() {
         }
     };
 
-    const handleDeletePackage = async (packageId: number) => {
+    const handleDeletePackage = async (packageId: string) => {
         if (!confirm('Are you sure you want to delete this package? This action cannot be undone.')) {
             return;
         }
@@ -451,23 +440,23 @@ export default function AdminPackagesPage() {
                                         </label>
                                         <div className="space-y-4 p-4 bg-white rounded-lg border border-gray-200">
                                             {permissions.map((permission) => {
-                                                const isEnabled = editSelectedPermissions[permission.permission_id]?.is_enabled || false;
-                                                const queryLimit = editSelectedPermissions[permission.permission_id]?.query_limit;
+                                                const isEnabled = editSelectedPermissions[permission.id]?.is_enabled || false;
+                                                const queryLimit = editSelectedPermissions[permission.id]?.query_limit;
 
                                                 return (
-                                                    <div key={permission.permission_id} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
+                                                    <div key={permission.id} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
                                                         <div className="flex items-start gap-3">
                                                             <input
                                                                 type="checkbox"
-                                                                id={`edit-permission-${permission.permission_id}`}
+                                                                id={`edit-permission-${permission.id}`}
                                                                 checked={isEnabled}
-                                                                onChange={(e) => handlePermissionToggle(permission.permission_id, e.target.checked, true)}
+                                                                onChange={(e) => handlePermissionToggle(permission.id, e.target.checked, true)}
                                                                 className="mt-1 h-4 w-4 rounded border-gray-300 text-jet-blue focus:ring-jet-blue"
                                                                 disabled={isCreating}
                                                             />
                                                             <div className="flex-1">
                                                                 <label
-                                                                    htmlFor={`edit-permission-${permission.permission_id}`}
+                                                                    htmlFor={`edit-permission-${permission.id}`}
                                                                     className="text-sm font-medium text-gray-900 cursor-pointer"
                                                                 >
                                                                     {permission.display_name}
@@ -478,17 +467,17 @@ export default function AdminPackagesPage() {
                                                                 {isEnabled && (
                                                                     <div className="mt-3">
                                                                         <label
-                                                                            htmlFor={`edit-limit-${permission.permission_id}`}
+                                                                            htmlFor={`edit-limit-${permission.id}`}
                                                                             className="block text-xs font-medium text-gray-700 mb-1"
                                                                         >
                                                                             Daily Query Limit (optional)
                                                                         </label>
                                                                         <input
                                                                             type="number"
-                                                                            id={`edit-limit-${permission.permission_id}`}
+                                                                            id={`edit-limit-${permission.id}`}
                                                                             min="0"
                                                                             value={queryLimit || ''}
-                                                                            onChange={(e) => handleQueryLimitChange(permission.permission_id, e.target.value, true)}
+                                                                            onChange={(e) => handleQueryLimitChange(permission.id, e.target.value, true)}
                                                                             placeholder="Unlimited if empty"
                                                                             className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-jet-blue focus:outline-none focus:ring-1 focus:ring-jet-blue"
                                                                             disabled={isCreating}
@@ -590,23 +579,23 @@ export default function AdminPackagesPage() {
                                     </label>
                                     <div className="space-y-4 p-4 bg-white rounded-lg border border-gray-200">
                                         {permissions.map((permission) => {
-                                            const isEnabled = selectedPermissions[permission.permission_id]?.is_enabled || false;
-                                            const queryLimit = selectedPermissions[permission.permission_id]?.query_limit;
+                                            const isEnabled = selectedPermissions[permission.id]?.is_enabled || false;
+                                            const queryLimit = selectedPermissions[permission.id]?.query_limit;
 
                                             return (
-                                                <div key={permission.permission_id} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
+                                                <div key={permission.id} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
                                                     <div className="flex items-start gap-3">
                                                         <input
                                                             type="checkbox"
-                                                            id={`permission-${permission.permission_id}`}
+                                                            id={`permission-${permission.id}`}
                                                             checked={isEnabled}
-                                                            onChange={(e) => handlePermissionToggle(permission.permission_id, e.target.checked)}
+                                                            onChange={(e) => handlePermissionToggle(permission.id, e.target.checked)}
                                                             className="mt-1 h-4 w-4 rounded border-gray-300 text-jet-blue focus:ring-jet-blue"
                                                             disabled={isCreating}
                                                         />
                                                         <div className="flex-1">
                                                             <label
-                                                                htmlFor={`permission-${permission.permission_id}`}
+                                                                htmlFor={`permission-${permission.id}`}
                                                                 className="text-sm font-medium text-gray-900 cursor-pointer"
                                                             >
                                                                 {permission.display_name}
@@ -617,17 +606,17 @@ export default function AdminPackagesPage() {
                                                             {isEnabled && (
                                                                 <div className="mt-3">
                                                                     <label
-                                                                        htmlFor={`limit-${permission.permission_id}`}
+                                                                        htmlFor={`limit-${permission.id}`}
                                                                         className="block text-xs font-medium text-gray-700 mb-1"
                                                                     >
                                                                         Daily Query Limit (optional)
                                                                     </label>
                                                                     <input
                                                                         type="number"
-                                                                        id={`limit-${permission.permission_id}`}
+                                                                        id={`limit-${permission.id}`}
                                                                         min="0"
                                                                         value={queryLimit || ''}
-                                                                        onChange={(e) => handleQueryLimitChange(permission.permission_id, e.target.value)}
+                                                                        onChange={(e) => handleQueryLimitChange(permission.id, e.target.value)}
                                                                         placeholder="Unlimited if empty"
                                                                         className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-jet-blue focus:outline-none focus:ring-1 focus:ring-jet-blue"
                                                                         disabled={isCreating}
@@ -698,9 +687,9 @@ export default function AdminPackagesPage() {
                             ) : (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {paginatedPackages.map((pkg) => (
+                                            {paginatedPackages.map((pkg) => (
                                             <div
-                                                key={pkg.package_id}
+                                                key={pkg.id}
                                                 className="p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow"
                                             >
                                                 <div className="flex items-start justify-between mb-2">
@@ -722,7 +711,7 @@ export default function AdminPackagesPage() {
                                                         </button>
                                                         {pkg.is_custom && (
                                                             <button
-                                                                onClick={() => handleDeletePackage(pkg.package_id)}
+                                                                onClick={() => handleDeletePackage(pkg.id)}
                                                                 className="px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                                                 disabled={isLoading}
                                                             >
@@ -732,7 +721,7 @@ export default function AdminPackagesPage() {
                                                     </div>
                                                 </div>
                                                 <p className="text-sm text-gray-500">
-                                                    ID: {pkg.package_id}
+                                                    ID: {pkg.id}
                                                 </p>
                                             </div>
                                         ))}
