@@ -8,10 +8,11 @@ export default function Hero() {
             <span className="block text-signal-orange">with Precision</span>
           </h1>
 
-          <p className="mx-auto max-w-xl text-sm text-gray-700 sm:text-base">
-            JetPromptOptimizer helps you create, test, and refine AI prompts for
-            maximum performance. Collaborate with your team and track results in
-            real time.
+          <p className="mx-auto max-w-2xl text-base text-gray-700 sm:text-lg leading-relaxed">
+            Stop wasting time guessing which prompts work.
+            <br />
+            Jet Prompt Optimizer shows you what performs, helps your team improve it
+            together, and keeps results consistent as you scale AI across your workflows.
           </p>
         </div>
 

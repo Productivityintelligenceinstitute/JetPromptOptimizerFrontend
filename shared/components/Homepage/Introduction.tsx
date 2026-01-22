@@ -57,10 +57,10 @@ export default function Introduction() {
                     <div className="w-full lg:w-1/2 h-full flex items-center hidden sm:block justify-center">
                         <div className="relative w-full h-full min-h-[300px] sm:min-h-[400px] md:min-h-[500px] lg:min-h-[600px]">
                             <Image
-                                src="/assets/introduction1.png"
+                                src="/assets/introduction2.png"
                                 alt="Dashboard"
                                 fill
-                                className="object-contain rounded-2xl"
+                                className="rounded-2xl"
                             />
                         </div>
                     </div>

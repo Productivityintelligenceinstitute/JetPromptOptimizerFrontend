@@ -68,8 +68,8 @@ export const ChevronDown = ({ className }: { className?: string }) => (
     </svg>
 );
 export const NavLogoIcon=()=>(
-    <svg width="70" height="70" viewBox="0 0 82 90" fill="none" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink">
-<rect width="70" height="70" fill="url(#pattern0_111_87)"/>
+    <svg width="98" height="90" viewBox="0 0 82 90" fill="none" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink">
+<rect width="90" height="90" fill="url(#pattern0_111_87)"/>
 <defs>
 <pattern id="pattern0_111_87" patternContentUnits="objectBoundingBox" width="1" height="1">
 <use xlinkHref="#image0_111_87" transform="matrix(0.000728547 0 0 0.000660409 -0.253968 -0.143885)"/>

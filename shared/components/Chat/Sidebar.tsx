@@ -37,21 +37,25 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
         router.push('/login');
     };
 
-    const fetchChats = React.useCallback(async () => {
+    const fetchChats = React.useCallback(async (silent: boolean = false) => {
         if (!user?.user_id) {
             setIsLoading(false);
             return;
         }
 
         try {
-            setIsLoading(true);
+            if (!silent) {
+                setIsLoading(true);
+            }
             const response = await getChatList(user.user_id);
             const grouped = groupChatsByDate(response.chats);
             setGroupedChats(grouped);
         } catch (error) {
             logError(error, 'Sidebar.fetchChats');
         } finally {
-            setIsLoading(false);
+            if (!silent) {
+                setIsLoading(false);
+            }
         }
     }, [user?.user_id]);
 
@@ -64,6 +68,19 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             fetchChats();
         }
     }, [pathname, fetchChats]);
+
+    // Listen for new chat creation events
+    useEffect(() => {
+        const handleChatCreated = () => {
+            // Refresh chat list silently (without showing loading) when a new chat is created
+            fetchChats(true);
+        };
+
+        window.addEventListener('chatCreated', handleChatCreated);
+        return () => {
+            window.removeEventListener('chatCreated', handleChatCreated);
+        };
+    }, [fetchChats]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

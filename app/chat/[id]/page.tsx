@@ -455,6 +455,11 @@ function ChatSessionContent() {
                                     '',
                                     newPath
                                 );
+                                
+                                // Dispatch custom event to notify sidebar to refresh
+                                window.dispatchEvent(new CustomEvent('chatCreated', { 
+                                    detail: { chatId: newChatId } 
+                                }));
                             }
                         }
                         try {

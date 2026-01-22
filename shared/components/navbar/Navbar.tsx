@@ -165,17 +165,17 @@ export function Navbar() {
   }, [pathname]);
 
   return (
-    <header className="bg-white/95 backdrop-blur fixed top-0 left-0 right-0 z-50 border-b border-gray-100">
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6 h-16">
+    <header className="bg-white/95 backdrop-blur fixed top-0 left-0 right-0 z-50 border-b border-gray-100 shadow-sm">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-2 md:px-8">
         {/* Logo and brand */}
-        <Link href={APP_ROUTES.home} className="flex items-center gap-2">
-          <div>
+        <Link href={APP_ROUTES.home} className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+          <div className="flex-shrink-0">
             <NavLogoIcon />
           </div>
         </Link>
 
         {/* Primary navigation */}
-        <div className="flex items-center gap-3 md:gap-6">
+        <div className="flex items-center gap-4 md:gap-8">
           {/* Mobile toggle */}
           <button
             type="button"
@@ -200,18 +200,23 @@ export function Navbar() {
             </svg>
           </button>
 
-          <ul className="hidden items-center gap-6 text-[18px] font-semibold text-gray-90 md:flex">
+          <ul className="hidden items-center gap-8 text-base font-medium text-gray-700 md:flex">
             {MAIN_NAV_ITEMS.map((item) => (
               <li key={item.key}>
                 <Link
                   href={item.href}
                   className={cn(
-                    "relative pb-1 transition-colors hover:text-jet-blue",
-                    isActive(item.href) && "text-signal-orange"
+                    "relative transition-colors hover:text-jet-blue py-2",
+                    isActive(item.href) 
+                      ? "text-signal-orange font-semibold" 
+                      : "text-gray-700"
                   )}
                   aria-current={isActive(item.href) ? "page" : undefined}
                 >
                   {item.label}
+                  {isActive(item.href) && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-signal-orange rounded-full" />
+                  )}
                 </Link>
               </li>
             ))}
@@ -220,7 +225,7 @@ export function Navbar() {
               <li>
                 <Link
                   href="/chat"
-                  className="relative pb-1 transition-colors hover:text-jet-blue"
+                  className="relative transition-colors hover:text-jet-blue py-2 text-gray-700"
                 >
                   Chats
                 </Link>
@@ -229,28 +234,30 @@ export function Navbar() {
           </ul>
 
           {user ? (
-            <div className="hidden items-center gap-4 md:flex">
-              <span className="text-sm text-gray-700">Welcome, {user.name || user.email}</span>
+            <div className="hidden items-center gap-3 md:flex">
+              <span className="text-sm text-gray-600 hidden lg:inline-block">
+                Welcome, <span className="font-medium text-gray-900">{user.name || user.email}</span>
+              </span>
               {user.role === "admin" && (
                 <Link
                   href="/admin"
-                  className="rounded-[12px] bg-jet-blue px-4 h-[40px] py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90"
+                  className="rounded-lg bg-jet-blue px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-jet-blue/90 hover:shadow-md"
                 >
                   Admin Panel
                 </Link>
               )}
               <button
                 onClick={logout}
-                className="rounded-[12px] bg-gray-200 px-4 h-[40px] py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-300"
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:border-gray-400"
               >
                 Logout
               </button>
             </div>
           ) : (
-            <div className="hidden items-center gap-4 md:flex">
+            <div className="hidden items-center gap-3 md:flex">
               <Link
                 href="/signup"
-                className="rounded-[12px] bg-jet-blue px-4 h-[40px] py-2 text-sm font-semibold text-soft-white shadow-sm transition-colors hover:bg-jet-blue/90"
+                className="rounded-lg bg-jet-blue px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-jet-blue/90 hover:shadow-md"
               >
                 Get Started
               </Link>
@@ -267,7 +274,7 @@ export function Navbar() {
             aria-hidden="true"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute top-16 left-0 right-0 bg-white border-t border-gray-100 shadow-lg">
+          <div className="absolute top-full left-0 right-0 bg-white border-t border-gray-100 shadow-lg">
             <div className="mx-auto max-w-6xl px-4 py-4 space-y-4">
             <div className="flex flex-col gap-3 text-base font-semibold text-gray-900">
               {MAIN_NAV_ITEMS.map((item) => (
