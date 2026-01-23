@@ -61,7 +61,7 @@ export default function Hero() {
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-signal-orange bg-white px-6 py-3 text-sm font-medium text-signal-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 focus-visible:ring-offset-soft-white"
+              className="inline-flex items-center cursor-pointer justify-center gap-2 rounded-md border border-signal-orange bg-white px-6 py-3 text-sm font-medium text-signal-orange focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 focus-visible:ring-offset-soft-white"
             >
               <svg
                 width="24"
