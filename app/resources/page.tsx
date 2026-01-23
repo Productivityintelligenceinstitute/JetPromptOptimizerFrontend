@@ -7,7 +7,7 @@ import { RESOURCE_ARTICLES } from "@/shared/constants/resources";
 export default function ResourcesPage() {
   return (
     <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-7xl px-4 pt-24 pb-16 md:pt-28">
+      <div className="mx-auto max-w-7xl px-4 pt-32 pb-16">
         {/* Header Section */}
         <div className="mb-12 text-center">
           <h1 className="text-4xl font-semibold text-jet-blue md:text-5xl">
@@ -29,7 +29,7 @@ export default function ResourcesPage() {
             >
               {/* Featured Image Placeholder */}
               {article.featuredImage ? (
-                <div className="relative h-48 w-full overflow-hidden rounded-t-xl bg-gradient-to-br from-jet-blue/10 to-signal-orange/10">
+                <div className="relative h-48 w-full overflow-hidden rounded-t-xl bg-linear-to-br from-jet-blue/10 to-signal-orange/10">
                   <Image
                     src={article.featuredImage}
                     alt={article.title}
@@ -39,7 +39,7 @@ export default function ResourcesPage() {
                   />
                 </div>
               ) : (
-                <div className="relative h-48 w-full overflow-hidden rounded-t-xl bg-gradient-to-br from-jet-blue/10 to-signal-orange/10 flex items-center justify-center">
+                <div className="relative h-48 w-full overflow-hidden rounded-t-xl bg-linear-to-br from-jet-blue/10 to-signal-orange/10 flex items-center justify-center">
                   <div className="text-center p-6">
                     <div className="mb-2 text-4xl">📚</div>
                     <div className="h-2 w-24 mx-auto bg-jet-blue/20 rounded-full"></div>
@@ -80,8 +80,7 @@ export default function ResourcesPage() {
                 <div className="mt-auto border-t border-gray-100 pt-4">
                   <div className="flex items-center justify-between text-xs text-gray-500">
                     <div>
-                      <p className="font-medium text-gray-700">{article.author}</p>
-                      <p className="text-gray-500">{article.authorTitle}</p>
+                      <p>JetPilot</p>
                     </div>
                     <div className="text-right">
                       <p>{article.readTime}</p>

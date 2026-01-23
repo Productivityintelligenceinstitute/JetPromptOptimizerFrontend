@@ -39,7 +39,7 @@ export default function AdminPage() {
         <AdminGuard>
             <div className="min-h-screen bg-gray-50">
                 <AdminNavbar />
-                <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
+                <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-36">
                     <div className="mb-10">
                         <p className="text-sm font-semibold uppercase tracking-wide text-jet-blue mb-2">
                             Admin Console

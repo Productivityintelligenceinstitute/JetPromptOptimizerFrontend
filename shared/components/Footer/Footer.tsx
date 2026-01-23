@@ -1,7 +1,6 @@
 import React from "react";
 import Link from "next/link";
 import {
-    ArrowUpRightIcon,
     FacebookIcon,
     GithubIcon,
     TwitterIcon,
@@ -12,7 +11,6 @@ const Footer = () => {
     return (
         <footer className="bg-jet-blue text-soft-white py-6 sm: px-4 md:px-8 lg:px-16 font-sans">
             <div className="max-w-7xl mx-auto pt-4  ">
-               
 
                 {/* Middle Section: Links & Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
@@ -39,7 +37,7 @@ const Footer = () => {
                         <ul className="space-y-4 text-sm text-gray-100">
                             <li><FooterLink href="#">Features</FooterLink></li>
                             <li><FooterLink href="#">Pricing</FooterLink></li>
-                            <li><FooterLink href="#">Documentation</FooterLink></li>
+                            <li><FooterLink href="#">Resources</FooterLink></li>
                             <li><FooterLink href="#">Admin</FooterLink></li>
                         </ul>
                     </div>
@@ -60,14 +58,13 @@ const Footer = () => {
                         <h3 className="text-xl font-medium mb-6">Connect With Us</h3>
                         <ul className="space-y-4 text-sm text-gray-100">
                             <li className="flex flex-col gap-1">
-                                <p>1985 Hollow Ridge Drive</p>
-                                <p>Austin, TX 78744 USA</p>
+                                <p>Leonard Productivity Intelligence Institute, LLC</p>
+                                <p>100 LakeForest Blvd</p>
+                                <p>Suite 650</p>
+                                <p>Gaithersburg, MD 20877</p>
                             </li>
                             <li>
-                                <p>+1 (415) 555-0198</p>
-                            </li>
-                            <li>
-                                <p>support@jetpromptoptimizer.com</p>
+                                <p>support@jetpromptoptimizer.ai</p>
                             </li>
                         </ul>
                     </div>

@@ -5,18 +5,18 @@ import Link from "next/link";
 import { useState } from "react";
 
 // Image component with fallback
-function ImageWithFallback({ 
-  src, 
-  alt, 
-  className, 
-  fill, 
+function ImageWithFallback({
+  src,
+  alt,
+  className,
+  fill,
   sizes,
   width,
   height,
   placeholderText,
-}: { 
-  src: string; 
-  alt: string; 
+}: {
+  src: string;
+  alt: string;
   className?: string;
   fill?: boolean;
   sizes?: string;
@@ -25,7 +25,6 @@ function ImageWithFallback({
   placeholderText?: string;
 }) {
   const [imgError, setImgError] = useState(false);
-  const [imgSrc, setImgSrc] = useState(src);
 
   const handleError = () => {
     setImgError(true);
@@ -35,17 +34,17 @@ function ImageWithFallback({
     return (
       <div className={`flex items-center justify-center bg-gray-200 text-gray-500 ${className || ""}`}>
         <div className="text-center p-4">
-          <svg 
-            className="w-12 h-12 mx-auto mb-2 text-gray-400" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className="w-12 h-12 mx-auto mb-2 text-gray-400"
+            fill="none"
+            stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" 
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
             />
           </svg>
           <p className="text-sm font-medium">{placeholderText || "Image not available"}</p>
@@ -58,7 +57,7 @@ function ImageWithFallback({
   if (fill) {
     return (
       <Image
-        src={imgSrc}
+        src={src}
         alt={alt}
         fill
         className={className}
@@ -70,7 +69,7 @@ function ImageWithFallback({
 
   return (
     <Image
-      src={imgSrc}
+      src={src}
       alt={alt}
       width={width}
       height={height}
@@ -182,7 +181,7 @@ const additionalCredentials = [
 export default function AboutPage() {
   return (
     <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-7xl px-4 pt-14 pb-16 md:pt-18 md:pb-20 space-y-16">
+      <div className="mx-auto max-w-7xl px-4 pt-32 pb-16 md:pb-20 space-y-16">
         {/* Hero */}
         <section className="relative overflow-hidden rounded-3xl bg-white p-5 md:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center shadow-sm">
           <div className="relative h-[420px] md:h-[520px] w-full max-w-[520px] mx-auto rounded-[22px] overflow-hidden shadow-xl ring-1 ring-black/5">
@@ -239,9 +238,9 @@ export default function AboutPage() {
                 I lived it. Leaders, creators, entire teams came to me drained because their prompts were
                 unclear, inconsistent, and never captured the brilliance in their minds.
               </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
         {/* Journey */}
         <section className="space-y-6">
@@ -284,10 +283,10 @@ export default function AboutPage() {
                     </ul>
                   ) : null}
                 </div>
-        </div>
+              </div>
             ))}
-        </div>
-      </section>
+          </div>
+        </section>
 
         {/* Introducing block */}
         <section className="rounded-[28px] bg-[#2f528b] text-white px-6 md:px-10 py-10 md:py-12 shadow-lg space-y-7">
@@ -316,10 +315,10 @@ export default function AboutPage() {
                   </span>
                   <p className="text-[20px] md:text-[22px] font-semibold text-gray-900">{item.label}</p>
                   <p className="text-[15px] md:text-[16px] text-gray-700">{item.desc}</p>
-        </div>
-        </div>
+                </div>
+              </div>
             ))}
-        </div>
+          </div>
         </section>
 
         {/* Magic Workflow */}
@@ -353,7 +352,7 @@ export default function AboutPage() {
                 </div>
               </div>
             ))}
-        </div>
+          </div>
         </section>
 
         {/* CTA */}
@@ -438,15 +437,15 @@ export default function AboutPage() {
         <section className="rounded-3xl shadow-lg bg-white border border-gray-100">
           <div className="relative max-w-5xl mx-auto px-2 md:px-4 py-3 md:py-1">
             <div className="relative w-full h-[220px] md:h-[280px] rounded-2xl overflow-hidden bg-gray-50">
-            <ImageWithFallback
-              src="/assets/about/educational-partners.png"
-              alt="Educational partners"
-              fill
-              className="object-contain p-4 md:p-6"
-              sizes="(max-width: 1280px) 100vw, 80vw"
-              placeholderText="Educational partners"
-            />
-          </div>
+              <ImageWithFallback
+                src="/assets/about/educational-partners.png"
+                alt="Educational partners"
+                fill
+                className="object-contain p-4 md:p-6"
+                sizes="(max-width: 1280px) 100vw, 80vw"
+                placeholderText="Educational partners"
+              />
+            </div>
           </div>
         </section>
 
@@ -454,7 +453,7 @@ export default function AboutPage() {
         <section className="space-y-4">
           <h3 className="text-xl md:text-2xl font-semibold text-jet-blue">
             AI Executive Education
-        </h3>
+          </h3>
           <div className="space-y-3">
             {executiveEducation.map((program) => (
               <details
@@ -474,13 +473,13 @@ export default function AboutPage() {
               </details>
             ))}
           </div>
-      </section>
+        </section>
 
         {/* Additional Credentials */}
         <section className="space-y-4">
           <h3 className="text-xl md:text-2xl font-semibold text-jet-blue">
             Additional Credentials
-        </h3>
+          </h3>
           <div className="space-y-3">
             {additionalCredentials.map((credential) => (
               <details
@@ -508,7 +507,7 @@ export default function AboutPage() {
               </details>
             ))}
           </div>
-      </section>
+        </section>
       </div>
     </main>
   );

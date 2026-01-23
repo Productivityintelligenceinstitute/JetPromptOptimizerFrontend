@@ -1,6 +1,5 @@
-import React from 'react';
 import Image from 'next/image';
-import { RobotIcon, WrenchIcon, TrendingUpIcon, TrendingUptwoIcon } from '@/shared/constants/IntroductionIcons';
+import { RobotIcon, WrenchIcon, TrendingUpIcon} from '@/shared/constants/IntroductionIcons';
 
 export default function Introduction() {
     return (
@@ -16,7 +15,7 @@ export default function Introduction() {
                                 Introducing <br></br>Jet Prompt Optimizer
                             </h2>
                             <p className="text-gray-800 text-sm sm:text-[15px] leading-relaxed">
-                                Jet Prompt Optimizer is your gateway to mastering AI prompt design. It doesn't just help you write prompts — it measures and manages their business impact.
+                                Jet Prompt Optimizer is your gateway to mastering AI prompt design. It doesn&apos;t just help you write prompts — it measures and manages their business impact.
                             </p>
                         </div>
                         <div className="space-y-4 sm:space-y-6">
@@ -26,7 +25,7 @@ export default function Introduction() {
 
                             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                                 <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 flex-1 flex items-start gap-3 sm:gap-4">
-                                    <div className="flex-shrink-0 mt-0.5">
+                                    <div className="shrink-0 mt-0.5">
                                         <RobotIcon className="w-5 h-5 sm:w-6 sm:h-6 text-signal-orange" />
                                     </div>
                                     <p className="text-gray-900 text-xs sm:text-[14px] font-normal">
@@ -34,7 +33,7 @@ export default function Introduction() {
                                     </p>
                                 </div>
                                 <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 flex-1 flex items-start gap-3 sm:gap-4">
-                                    <div className="flex-shrink-0 mt-0.5">
+                                    <div className="shrink-0 mt-0.5">
                                         <WrenchIcon className="w-5 h-5 sm:w-6 sm:h-6 text-signal-orange" />
                                     </div>
                                     <p className="text-gray-900 text-xs sm:text-[14px] font-normal">
@@ -43,7 +42,7 @@ export default function Introduction() {
                                 </div>
                             </div>
                             <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 flex items-start gap-3 sm:gap-4">
-                                <div className="flex-shrink-0 mt-0.5">
+                                <div className="shrink-0 mt-0.5">
                                     <TrendingUpIcon className="w-5 h-5 sm:w-6 sm:h-6 text-signal-orange" />
                                 </div>
                                 <p className="text-gray-900 text-xs sm:text-[14px] font-normal">
@@ -54,7 +53,7 @@ export default function Introduction() {
                     </div>
 
                     {/* Right Image/Dashboard */}
-                    <div className="w-full lg:w-1/2 h-full flex items-center hidden sm:block justify-center">
+                    <div className="w-full lg:w-1/2 h-full items-center hidden sm:flex justify-center">
                         <div className="relative w-full h-full min-h-[300px] sm:min-h-[400px] md:min-h-[500px] lg:min-h-[600px]">
                             <Image
                                 src="/assets/introduction2.png"

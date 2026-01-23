@@ -86,14 +86,14 @@ export default function AdminPackagesPage() {
         try {
             setIsLoading(true);
             setError(null);
-            
+
             const [packagesData, permissionsData] = await Promise.all([
                 getPackages(),
                 getPermissions(),
             ]);
 
             setPackages(packagesData);
-            
+
             // Map permissions with display names
             const permissionsWithDisplay = permissionsData.map(perm => ({
                 ...perm,
@@ -115,10 +115,10 @@ export default function AdminPackagesPage() {
             setIsEditing(true);
             setError(null);
             setSuccess(null);
-            
+
             // Load permissions for this package by package id
             const packagePermissions = await getPackagePermissionsByPackageId(pkg.id);
-            
+
             // Map to edit permissions state using permission UUIDs
             const permissionsMap: Record<string, PackagePermission> = {};
             packagePermissions.forEach(pp => {
@@ -128,7 +128,7 @@ export default function AdminPackagesPage() {
                     query_limit: pp.query_limit,
                 };
             });
-            
+
             setEditSelectedPermissions(permissionsMap);
         } catch (err: any) {
             setError(err.message || 'Failed to load package permissions');
@@ -148,7 +148,7 @@ export default function AdminPackagesPage() {
     const handleUpdatePackage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingPackageId) return;
-        
+
         if (!editPackageName.trim()) {
             setError('Package name is required');
             return;
@@ -164,42 +164,42 @@ export default function AdminPackagesPage() {
             setIsCreating(true);
             setError(null);
             setSuccess(null);
-            
+
             // Get current package and its permissions
             const originalPackage = packages.find(p => p.id === editingPackageId);
             if (!originalPackage) {
                 setError('Package not found');
                 return;
             }
-            
+
             const currentPermissions = await getPackagePermissionsByPackageId(originalPackage.id);
-            
+
             // Map current permissions by permission_id for comparison
             const currentPermissionIds = new Set(currentPermissions.map(p => p.permission_id));
             const newPermissionIds = new Set(enabledPermissions.map(p => p.permission_id));
-            
+
             // Remove permissions that are no longer enabled
             const permissionsToRemove = currentPermissions.filter(
                 p => !newPermissionIds.has(p.permission_id)
             );
-            
+
             // Add or update permissions
             const permissionsToAdd = enabledPermissions.filter(
                 p => {
                     const perm = permissions.find(per => per.id === p.permission_id);
                     if (!perm) return false;
                     const currentPerm = currentPermissions.find(cp => cp.permission_id === perm.id);
-                    return !currentPerm || 
+                    return !currentPerm ||
                         currentPerm.is_enabled !== p.is_enabled ||
                         currentPerm.query_limit !== p.query_limit;
                 }
             );
-            
+
             // Remove old permissions (backend expects package id and permission id for delete endpoint)
             for (const permToRemove of permissionsToRemove) {
                 await removePermissionFromPackage(editingPackageId, permToRemove.permission_id);
             }
-            
+
             // Add/update permissions using package_name and permission_name
             for (const perm of permissionsToAdd) {
                 const permission = permissions.find(p => p.id === perm.permission_id);
@@ -212,7 +212,7 @@ export default function AdminPackagesPage() {
                     });
                 }
             }
-            
+
             // Note: Package name and is_custom cannot be updated via API (no PUT endpoint)
             // If they changed, show a warning
             if (originalPackage && (
@@ -223,7 +223,7 @@ export default function AdminPackagesPage() {
             } else {
                 setSuccess('Package permissions updated successfully!');
             }
-            
+
             // Refresh packages list
             await fetchData();
             handleCancelEdit();
@@ -299,13 +299,13 @@ export default function AdminPackagesPage() {
             setIsCreating(true);
             setError(null);
             setSuccess(null);
-            
+
             // Step 1: Create the package
             const newPackage = await createPackage({
                 package_name: newPackageName.trim(),
                 is_custom: isCustom,
             });
-            
+
             // Step 2: Assign permissions to the package using package_name and permission_name
             for (const perm of enabledPermissions) {
                 const permission = permissions.find(p => p.id === perm.permission_id);
@@ -318,12 +318,12 @@ export default function AdminPackagesPage() {
                     });
                 }
             }
-            
+
             setSuccess('Package created successfully!');
             setNewPackageName('');
             setIsCustom(true);
             setSelectedPermissions({});
-            
+
             // Refresh packages list
             await fetchData();
         } catch (err: any) {
@@ -370,7 +370,7 @@ export default function AdminPackagesPage() {
         <AdminGuard>
             <div className="min-h-screen bg-gray-50">
                 <AdminNavbar />
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 pt-28">
+                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 pt-36">
                     <div className="mb-8">
                         <h1 className="text-3xl font-semibold text-[#335386] mb-2">
                             Packages & Permissions
@@ -543,127 +543,127 @@ export default function AdminPackagesPage() {
                                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                                     Create New Package
                                 </h3>
-                            <form onSubmit={handleCreatePackage} className="space-y-4">
-                                <div>
-                                    <label htmlFor="packageName" className="block text-sm font-medium text-gray-700 mb-2">
-                                        Package Name
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="packageName"
-                                        value={newPackageName}
-                                        onChange={(e) => setNewPackageName(e.target.value)}
-                                        placeholder="Enter package name (e.g., Enterprise, Custom Plan)"
-                                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-jet-blue focus:outline-none focus:ring-1 focus:ring-jet-blue"
-                                        disabled={isCreating}
-                                    />
-                                </div>
+                                <form onSubmit={handleCreatePackage} className="space-y-4">
+                                    <div>
+                                        <label htmlFor="packageName" className="block text-sm font-medium text-gray-700 mb-2">
+                                            Package Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            id="packageName"
+                                            value={newPackageName}
+                                            onChange={(e) => setNewPackageName(e.target.value)}
+                                            placeholder="Enter package name (e.g., Enterprise, Custom Plan)"
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 shadow-sm focus:border-jet-blue focus:outline-none focus:ring-1 focus:ring-jet-blue"
+                                            disabled={isCreating}
+                                        />
+                                    </div>
 
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="isCustom"
-                                        checked={isCustom}
-                                        onChange={(e) => setIsCustom(e.target.checked)}
-                                        className="h-4 w-4 rounded border-gray-300 text-jet-blue focus:ring-jet-blue"
-                                        disabled={isCreating}
-                                    />
-                                    <label htmlFor="isCustom" className="ml-2 text-sm text-gray-700">
-                                        This is a custom package
-                                    </label>
-                                </div>
+                                    <div className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            id="isCustom"
+                                            checked={isCustom}
+                                            onChange={(e) => setIsCustom(e.target.checked)}
+                                            className="h-4 w-4 rounded border-gray-300 text-jet-blue focus:ring-jet-blue"
+                                            disabled={isCreating}
+                                        />
+                                        <label htmlFor="isCustom" className="ml-2 text-sm text-gray-700">
+                                            This is a custom package
+                                        </label>
+                                    </div>
 
-                                <div className="mt-6">
-                                    <label className="block text-sm font-medium text-gray-700 mb-3">
-                                        Permissions
-                                    </label>
-                                    <div className="space-y-4 p-4 bg-white rounded-lg border border-gray-200">
-                                        {permissions.map((permission) => {
-                                            const isEnabled = selectedPermissions[permission.id]?.is_enabled || false;
-                                            const queryLimit = selectedPermissions[permission.id]?.query_limit;
+                                    <div className="mt-6">
+                                        <label className="block text-sm font-medium text-gray-700 mb-3">
+                                            Permissions
+                                        </label>
+                                        <div className="space-y-4 p-4 bg-white rounded-lg border border-gray-200">
+                                            {permissions.map((permission) => {
+                                                const isEnabled = selectedPermissions[permission.id]?.is_enabled || false;
+                                                const queryLimit = selectedPermissions[permission.id]?.query_limit;
 
-                                            return (
-                                                <div key={permission.id} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
-                                                    <div className="flex items-start gap-3">
-                                                        <input
-                                                            type="checkbox"
-                                                            id={`permission-${permission.id}`}
-                                                            checked={isEnabled}
-                                                            onChange={(e) => handlePermissionToggle(permission.id, e.target.checked)}
-                                                            className="mt-1 h-4 w-4 rounded border-gray-300 text-jet-blue focus:ring-jet-blue"
-                                                            disabled={isCreating}
-                                                        />
-                                                        <div className="flex-1">
-                                                            <label
-                                                                htmlFor={`permission-${permission.id}`}
-                                                                className="text-sm font-medium text-gray-900 cursor-pointer"
-                                                            >
-                                                                {permission.display_name}
-                                                            </label>
-                                                            <p className="text-xs text-gray-500 mt-0.5">
-                                                                {permission.description}
-                                                            </p>
-                                                            {isEnabled && (
-                                                                <div className="mt-3">
-                                                                    <label
-                                                                        htmlFor={`limit-${permission.id}`}
-                                                                        className="block text-xs font-medium text-gray-700 mb-1"
-                                                                    >
-                                                                        Daily Query Limit (optional)
-                                                                    </label>
-                                                                    <input
-                                                                        type="number"
-                                                                        id={`limit-${permission.id}`}
-                                                                        min="0"
-                                                                        value={queryLimit || ''}
-                                                                        onChange={(e) => handleQueryLimitChange(permission.id, e.target.value)}
-                                                                        placeholder="Unlimited if empty"
-                                                                        className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-jet-blue focus:outline-none focus:ring-1 focus:ring-jet-blue"
-                                                                        disabled={isCreating}
-                                                                    />
-                                                                    <p className="text-xs text-gray-500 mt-1">
-                                                                        Leave empty for unlimited queries
-                                                                    </p>
-                                                                </div>
-                                                            )}
+                                                return (
+                                                    <div key={permission.id} className="border-b border-gray-100 last:border-0 pb-4 last:pb-0">
+                                                        <div className="flex items-start gap-3">
+                                                            <input
+                                                                type="checkbox"
+                                                                id={`permission-${permission.id}`}
+                                                                checked={isEnabled}
+                                                                onChange={(e) => handlePermissionToggle(permission.id, e.target.checked)}
+                                                                className="mt-1 h-4 w-4 rounded border-gray-300 text-jet-blue focus:ring-jet-blue"
+                                                                disabled={isCreating}
+                                                            />
+                                                            <div className="flex-1">
+                                                                <label
+                                                                    htmlFor={`permission-${permission.id}`}
+                                                                    className="text-sm font-medium text-gray-900 cursor-pointer"
+                                                                >
+                                                                    {permission.display_name}
+                                                                </label>
+                                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                                    {permission.description}
+                                                                </p>
+                                                                {isEnabled && (
+                                                                    <div className="mt-3">
+                                                                        <label
+                                                                            htmlFor={`limit-${permission.id}`}
+                                                                            className="block text-xs font-medium text-gray-700 mb-1"
+                                                                        >
+                                                                            Daily Query Limit (optional)
+                                                                        </label>
+                                                                        <input
+                                                                            type="number"
+                                                                            id={`limit-${permission.id}`}
+                                                                            min="0"
+                                                                            value={queryLimit || ''}
+                                                                            onChange={(e) => handleQueryLimitChange(permission.id, e.target.value)}
+                                                                            placeholder="Unlimited if empty"
+                                                                            className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-jet-blue focus:outline-none focus:ring-1 focus:ring-jet-blue"
+                                                                            disabled={isCreating}
+                                                                        />
+                                                                        <p className="text-xs text-gray-500 mt-1">
+                                                                            Leave empty for unlimited queries
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
 
-                                {error && (
-                                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                                        <p className="text-sm text-red-600">{error}</p>
-                                    </div>
-                                )}
-
-                                {success && (
-                                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                                        <p className="text-sm text-green-600">{success}</p>
-                                    </div>
-                                )}
-
-                                <button
-                                    type="submit"
-                                    disabled={isCreating || !newPackageName.trim()}
-                                    className="w-full rounded-lg bg-jet-blue px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90 focus:outline-none focus:ring-2 focus:ring-jet-blue focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
-                                >
-                                    {isCreating ? (
-                                        <>
-                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                                            Creating...
-                                        </>
-                                    ) : (
-                                        <>
-                                            Create Package
-                                            <span>→</span>
-                                        </>
+                                    {error && (
+                                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                            <p className="text-sm text-red-600">{error}</p>
+                                        </div>
                                     )}
-                                </button>
-                            </form>
+
+                                    {success && (
+                                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                            <p className="text-sm text-green-600">{success}</p>
+                                        </div>
+                                    )}
+
+                                    <button
+                                        type="submit"
+                                        disabled={isCreating || !newPackageName.trim()}
+                                        className="w-full rounded-lg bg-jet-blue px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-jet-blue/90 focus:outline-none focus:ring-2 focus:ring-jet-blue focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        {isCreating ? (
+                                            <>
+                                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                                                Creating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                Create Package
+                                                <span>→</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </form>
                             </div>
                         )}
 
@@ -671,7 +671,7 @@ export default function AdminPackagesPage() {
                             <h3 className="text-lg font-semibold text-gray-900 mb-4">
                                 Existing Packages
                             </h3>
-                            
+
                             {isLoading ? (
                                 <div className="flex items-center justify-center py-12">
                                     <div className="text-center">
@@ -687,7 +687,7 @@ export default function AdminPackagesPage() {
                             ) : (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {paginatedPackages.map((pkg) => (
+                                        {paginatedPackages.map((pkg) => (
                                             <div
                                                 key={pkg.id}
                                                 className="p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow"

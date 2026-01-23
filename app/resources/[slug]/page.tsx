@@ -372,7 +372,7 @@ export default function ArticlePage() {
 
   return (
     <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-4xl px-4 pt-24 pb-16 md:pt-28">
+      <div className="mx-auto max-w-4xl px-4 pt-32 pb-16">
         {/* Back Button */}
         <Link
           href="/resources"
@@ -505,7 +505,7 @@ export default function ArticlePage() {
         )}
 
         {/* CTA Section */}
-        <div className="mt-12 rounded-xl bg-gradient-to-br from-jet-blue to-jet-blue/90 p-8 text-center text-white">
+        <div className="mt-12 rounded-xl bg-linear-to-br from-jet-blue to-jet-blue/90 p-8 text-center text-white">
           <h3 className="mb-2 text-2xl font-semibold">
             Ready to Turn Every Prompt into Performance?
           </h3>

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import React from 'react';
 
 export default function BonusSection() {
@@ -71,9 +72,11 @@ export default function BonusSection() {
                 </div>
 
                 {/* CTA Button */}
-                <button className="inline-flex items-center justify-center mb-4 px-4 py-2 rounded-lg bg-[#FF6B35] hover:bg-[#FF5722] text-white font-normal cursor-pointer text-sm">
-                    Claim Your Bonus
-                </button>
+                <Link href="/signup">
+                    <button className="inline-flex items-center justify-center mb-4 px-4 py-2 rounded-lg bg-[#FF6B35] hover:bg-[#FF5722] text-white font-normal cursor-pointer text-sm">
+                        Claim Your Bonus
+                    </button>
+                </Link>
             </div>
         </section>
     );
