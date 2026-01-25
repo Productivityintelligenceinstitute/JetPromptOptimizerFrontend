@@ -24,17 +24,21 @@ export default function PromptStages() {
           </p>
         </header>
 
-        {/* Grid layout - responsive on mobile, fixed on desktop */}
-        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-rows-2 md:gap-6 lg:max-w-[1100px] mx-auto">
-          {/* Row 1: Stacked on mobile, side by side on desktop */}
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-[418px_662px]">
+        {/* Grid layout - responsive on mobile, flexible on tablet and desktop */}
+        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-6 lg:max-w-[1100px] lg:mx-auto">
+          {/* Row 1: Stacked on mobile, side by side on tablet/desktop */}
+          <div className="md:col-span-1">
             <Card stage={basic} />
+          </div>
+          <div className="md:col-span-1">
             <Card stage={structured} />
           </div>
           
-          {/* Row 2: Stacked on mobile, side by side on desktop */}
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-[662px_418px]">
+          {/* Row 2: Stacked on mobile, side by side on tablet/desktop */}
+          <div className="md:col-span-1">
             <Card stage={master} />
+          </div>
+          <div className="md:col-span-1">
             <Card stage={system} />
           </div>
         </div>
