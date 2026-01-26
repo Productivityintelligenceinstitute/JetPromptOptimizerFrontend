@@ -6,6 +6,7 @@ import {
     TwitterIcon,
     GoogleIcon,
 } from "../../constants/FooterIcons";
+import { APP_ROUTES } from "@/config/navigation";
 
 const Footer = () => {
     return (
@@ -35,9 +36,9 @@ const Footer = () => {
                     <div>
                         <h3 className="text-xl font-medium mb-6">Useful Links</h3>
                         <ul className="space-y-4 text-sm text-gray-100">
-                            <li><FooterLink href="#">Features</FooterLink></li>
-                            <li><FooterLink href="#">Pricing</FooterLink></li>
-                            <li><FooterLink href="#">Resources</FooterLink></li>
+                            <li><FooterLink href={APP_ROUTES.features}>Features</FooterLink></li>
+                            <li><FooterLink href={APP_ROUTES.pricing}>Pricing</FooterLink></li>
+                            <li><FooterLink href={APP_ROUTES.resources}>Resources</FooterLink></li>
                             <li><FooterLink href="#">Admin</FooterLink></li>
                         </ul>
                     </div>
@@ -87,11 +88,43 @@ const Footer = () => {
     );
 };
 
-const FooterLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <Link href={href} className="hover:text-white transition-colors block">
-        {children}
-    </Link>
-);
+const FooterLink = ({ href, children }: { href: string; children: React.ReactNode }) => {
+    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        // If it's a hash link, handle scroll with offset
+        if (href.startsWith("/#") || href.startsWith("#")) {
+            e.preventDefault();
+            const hash = href.includes("#") ? href.split("#")[1] : "";
+            if (hash) {
+                // Navigate to home page first if not already there
+                if (window.location.pathname !== "/") {
+                    window.location.href = `/#${hash}`;
+                    return;
+                }
+                // Scroll to section with offset (different for features vs pricing)
+                setTimeout(() => {
+                    const section = document.getElementById(hash);
+                    if (section) {
+                        // Use smaller offset for features, standard for pricing
+                        const offset = hash === 'features' ? 40 : 50;
+                        const sectionTop = section.offsetTop;
+                        window.scrollTo({
+                            top: sectionTop - offset,
+                            behavior: 'smooth'
+                        });
+                        // Update URL hash
+                        window.history.pushState(null, "", `#${hash}`);
+                    }
+                }, 100);
+            }
+        }
+    };
+
+    return (
+        <Link href={href} onClick={handleClick} className="hover:text-white transition-colors block">
+            {children}
+        </Link>
+    );
+};
 
 const SocialLink = ({ href, icon }: { href: string; icon: React.ReactNode }) => (
     <Link

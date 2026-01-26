@@ -117,7 +117,7 @@ export default function Pricing() {
   };
 
   return (
-    <section id="pricing" className="py-12 sm:py-16 lg:py-20 bg-white">
+    <section id="pricing" className="py-12 sm:py-16 lg:py-20 bg-white scroll-mt-[50px]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-12 lg:mb-16">

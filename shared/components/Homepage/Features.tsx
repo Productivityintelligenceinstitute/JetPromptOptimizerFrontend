@@ -3,13 +3,13 @@ import { FEATURES } from '@/shared/constants/features';
 
 export default function Features() {
   return (
-    <section id="features" className="bg-white py-16 sm:py-24">
+    <section id="features" className="bg-white py-16 sm:py-24 scroll-mt-[40px]">
       <div className="mx-auto max-w-5xl px-4">
         <header className="text-center">
           <h2 className="mt-3 text-balance text-2xl font-semibold text-jet-blue sm:text-3xl md:text-4xl">
-Here’s Everything Waiting Inside JPO          </h2>
+            Here’s Everything Waiting Inside JPO          </h2>
           <p className="mt-3 text-sm text-gray-700 sm:text-base">
- JPO turns AI from a creative experiment into a managed performance asset.          </p>
+            JPO turns AI from a creative experiment into a managed performance asset.          </p>
         </header>
 
         <div className="mt-10 grid gap-6 md:grid-cols-2">
