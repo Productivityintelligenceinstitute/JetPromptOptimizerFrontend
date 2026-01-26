@@ -430,10 +430,9 @@ export default function ArticlePage() {
           </h1>
 
           {/* Author & Meta */}
-          <div className="mb-6 flex flex-wrap items-center gap-4 border-b border-gray-200 pb-6">
+          <div className="mb-6 flex flex-wrap items-center gap-4 border-b border-gray-200 pb-3">
             <div>
-              <p className="font-semibold text-gray-900">{article.author}</p>
-              <p className="text-sm text-gray-600">{article.authorTitle}</p>
+              <p className="text-sm text-gray-600">JetPilot</p>
             </div>
             <div className="ml-auto flex items-center gap-4 text-sm text-gray-500">
               <span>{article.publishedDate}</span>
