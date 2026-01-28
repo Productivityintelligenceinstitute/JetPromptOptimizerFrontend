@@ -22,7 +22,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     authorTitle: "CEO, CAIO",
     excerpt: "How Cognitive Bias and Ambiguity Undermine Results—and How the Jet Prompt Optimizer Fixes It",
     featuredImage: "/assets/resources/why-most-ai-prompts-fail.png",
-    publishedDate: "2024",
+    publishedDate: "2026",
     readTime: "12 min read",
     tags: [
       "AI Platform",
@@ -277,7 +277,7 @@ In a world where everyone's prompting faster than they're thinking, JPO gives yo
     authorTitle: "CEO & CAIO, Creator of Jet Prompt Optimizer",
     excerpt: "The future of productivity isn't about knowing what to ask AI—it's about mastering how to ask it. Explore the neuroscience and behavioral psychology behind effective prompting.",
     featuredImage: "/assets/resources/science-of-asking-better-questions.png",
-    publishedDate: "2024",
+    publishedDate: "2026",
     readTime: "12 min read",
     tags: [
       "AI Communication",
@@ -474,7 +474,7 @@ Because the future of AI belongs to those who ask better questions.
     authorTitle: "CEO & CAIO, Creator of Jet Prompt Optimizer",
     excerpt: "The most powerful AI users aren't bosses telling machines what to do—they're teachers guiding AI to think with them. Learn how to transform your prompts from commands to collaborative dialogues.",
     featuredImage: "/assets/resources/prompting-like-a-teacher-not-a-boss.png",
-    publishedDate: "2024",
+    publishedDate: "2026",
     readTime: "11 min read",
     tags: [
       "AI Communication",
@@ -692,7 +692,7 @@ The future of work won't belong to those who use AI fastest—but to those who c
     authorTitle: "CEO & CAIO, Creator of Jet Prompt Optimizer",
     excerpt: "Transform scattered ideas into consistent, high-performing AI outputs. Learn how structured prompting blends neuroscience, systems thinking, and creativity to turn chaos into scalable performance.",
     featuredImage: "/assets/resources/creative-chaos-consistent-output-2.png",
-    publishedDate: "2024",
+    publishedDate: "2026",
     readTime: "13 min read",
     tags: [
       "AI Prompt Optimization",
@@ -928,7 +928,7 @@ Because in the AI age, structure doesn't stifle creativity—it scales it.
     authorTitle: "CEO & CAIO, Creator of Jet Prompt Optimizer",
     excerpt: "AI doesn't read minds—it reads prompts. Learn how to bridge the gap between human intention and machine interpretation through Prompt Intelligence and neuroscience-informed communication.",
     featuredImage: "/assets/resources/why-ai-cant-read-your-mind.png",
-    publishedDate: "2024",
+    publishedDate: "2026",
     readTime: "11 min read",
     tags: [
       "Prompt Intelligence",
@@ -1089,7 +1089,7 @@ Lead your digital symphony today → https://app.jetpromptoptimizer.ai/
     excerpt:
       "Bad prompts quietly consume up to 70% of AI time through rework. Learn how precision prompting and Jet Prompt Optimizer eliminate hidden costs, boost trust, and restore flow.",
     featuredImage: "/assets/resources/hidden-cost-bad-prompts.png",
-    publishedDate: "2024",
+    publishedDate: "2026",
     readTime: "12 min read",
     tags: [
       "AI Productivity",
