@@ -26,7 +26,7 @@ export const plans = [
   },
   {
     name: 'Essential',
-    price: '$49.95',
+    price: '$34.95',
     period: '/ Month',
     badge: null,
     mostPopular: true,
@@ -54,7 +54,7 @@ export const plans = [
   },
   {
     name: 'Pro',
-    price: '$95.95',
+    price: '$75.95',
     period: '/ Month',
     badge: null,
     description:

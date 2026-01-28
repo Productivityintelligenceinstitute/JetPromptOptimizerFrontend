@@ -650,7 +650,7 @@ export default function AboutPage() {
             </div>
             <div className="text-center pt-1">
               <Link
-                href="/get-started"
+                href="/signup"
                 className="inline-flex items-center justify-center rounded-full bg-signal-orange px-6 py-2.5 text-sm md:text-[15px] font-semibold text-white shadow-md hover:bg-orange-500 transition"
               >
                 Get Started
