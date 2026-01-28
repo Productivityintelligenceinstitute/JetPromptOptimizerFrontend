@@ -245,15 +245,15 @@ function LibraryContent() {
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <div className="h-8 w-8 rounded-full bg-jet-blue/10 flex items-center justify-center">
                                                         <span className="text-jet-blue text-xs font-semibold">
-                                                            {prompt.email.charAt(0).toUpperCase()}
+                                                            {prompt?.email?.charAt(0).toUpperCase()}
                                                         </span>
                                                     </div>
                                                     <span className="text-sm text-gray-600">
-                                                        {prompt.email}
+                                                        {prompt?.email}
                                                     </span>
-                                                    {prompt.created_at && (
+                                                    {prompt?.created_at && (
                                                         <span className="text-xs text-gray-400">
-                                                            • {new Date(prompt.created_at).toLocaleDateString()}
+                                                            • {new Date(prompt?.created_at).toLocaleDateString()}
                                                         </span>
                                                     )}
                                                 </div>
@@ -295,7 +295,7 @@ function LibraryContent() {
                                             </button>
                                         </div>
                                         <div className="prose prose-sm max-w-none">
-                                            {formattedContent.split('\n').map((line, i) => {
+                                            {formattedContent?.split('\n').map((line, i) => {
                                                 const trimmed = line.trim();
                                                 if (!trimmed) {
                                                     return null;
