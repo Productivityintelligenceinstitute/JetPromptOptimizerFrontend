@@ -13,26 +13,66 @@ const testimonials: Testimonial[] = [
   {
     id: 1,
     quote:
-      "“Jet Prompt Optimizer has revolutionized our workflow. What used to take hours of manual prompt tuning now takes minutes. The quality of AI-generated content has skyrocketed“.",
-    name: "Alex Rivera",
-    title: "Lead AI Developer, Innovate Inc.",
-    avatar: "/assets/avatars/alex-rivera.jpg",
+      "Professors, teachers, and researchers don't know how to use platforms like Azure — they need simple solutions like this.",
+    name: "Bhaskarjit Sarmah",
+    title: "User",
+    avatar: "/assets/avatars/bhaskarjit-sarmah.jpg",
   },
   {
     id: 2,
     quote:
-      "“An essential tool for any team working with AI. The time saved on prompt engineering is incredible.“",
-    name: "Sarah Chen",
-    title: "AI Product Manager, TechCorp",
-    avatar: "/assets/avatars/sarah-chen.jpg",
+      "JPO creates agent instructions in seconds that I would spend significantly longer and the output on LLM is beyond my expectations on the depth provided. Great tool - highly recommend for getting more impactful output!",
+    name: "Pratik Patel",
+    title: "User",
+    avatar: "/assets/avatars/pratik-patel.jpg",
   },
   {
     id: 3,
     quote:
-      "“The difference in output quality is night and day. Our content team is producing better results in half the time“.",
-    name: "Michael Johnson",
-    title: "Head of Content, Creative Labs",
-    avatar: "/assets/avatars/michael-johnson.jpg",
+      "It addressed my topic and developed the general topic into more detail, which was useful.",
+    name: "User",
+    title: "Jet Prompt Optimizer User",
+    avatar: "/assets/avatars/user.jpg",
+  },
+  {
+    id: 4,
+    quote:
+      "Appreciate how specific and clear the prompt was. Simple 'plug and play.'",
+    name: "User",
+    title: "Jet Prompt Optimizer User",
+    avatar: "/assets/avatars/user.jpg",
+  },
+  {
+    id: 5,
+    quote:
+      "Took a series of prompts I had used in Chat and condensed them into a cogent single prompt.",
+    name: "User",
+    title: "Jet Prompt Optimizer User",
+    avatar: "/assets/avatars/user.jpg",
+  },
+  {
+    id: 6,
+    quote:
+      "Turn my novice prompt into a well-structured and effective prompt, which gave me a better response.",
+    name: "User",
+    title: "Jet Prompt Optimizer User",
+    avatar: "/assets/avatars/user.jpg",
+  },
+  {
+    id: 7,
+    quote:
+      "Create prompts that were AI optimized. I'd have no idea how to do that on my own.",
+    name: "User",
+    title: "Jet Prompt Optimizer User",
+    avatar: "/assets/avatars/user.jpg",
+  },
+  {
+    id: 8,
+    quote:
+      "Brings a great deal of clarity into framing contexts and frames.",
+    name: "User",
+    title: "Jet Prompt Optimizer User",
+    avatar: "/assets/avatars/user.jpg",
   },
 ];
 
