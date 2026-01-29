@@ -301,6 +301,39 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                         )}
                     </div>
 
+                    {/* Bonuses Button (above user email section) */}
+                    {user && (user.role === 'admin' || ['essential', 'pro'].includes((user.package_name || '').toLowerCase())) && (
+                        <div className="border-t border-gray-800 px-4 pt-4 pb-1">
+                            <a
+                                href="https://www.gokollab.com/jet-prompt-optimizer-7rtjng/private-group"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center rounded-md border border-amber-400/70 bg-amber-500/10 text-sm font-medium hover:bg-amber-500/20 hover:border-amber-400 text-amber-200 transition-colors gap-3 px-4 py-3"
+                            >
+                                <svg
+                                    className="h-4 w-4 flex-shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 8c-1.657 0-3 .843-3 1.882V11h6v-1.118C15 8.843 13.657 8 12 8z"
+                                    />
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M5 11h14v5a2 2 0 01-2 2H7a2 2 0 01-2-2v-5z"
+                                    />
+                                </svg>
+                                <span>Bonuses</span>
+                            </a>
+                        </div>
+                    )}
+
                     {/* User Profile - hidden when collapsed */}
                     <div className="border-t border-gray-800 p-4">
                         <div className="relative" ref={dropdownRef}>
@@ -393,6 +426,18 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             {/* Collapsed state - show minimal user info */}
             {!isOpen && (
                 <div className="flex-1 flex flex-col items-center justify-end pb-4">
+                    {/* Bonuses Button (above email section) */}
+                    {user && (user.role === 'admin' || ['essential', 'pro'].includes((user.package_name || '').toLowerCase())) && (
+                        <a
+                            href="https://www.gokollab.com/jet-prompt-optimizer-7rtjng/private-group"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mb-3 inline-flex items-center justify-center rounded-md border border-amber-400/70 bg-amber-500/10 text-xs font-medium hover:bg-amber-500/20 hover:border-amber-400 text-amber-200 transition-colors px-3 py-2"
+                            title="Bonuses"
+                        >
+                            Bonuses
+                        </a>
+                    )}
                     <div className="relative" ref={dropdownRef}>
                     <button 
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}

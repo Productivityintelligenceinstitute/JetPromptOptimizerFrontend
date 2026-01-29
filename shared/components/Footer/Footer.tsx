@@ -68,7 +68,10 @@ const Footer = () => {
                         <p>USPTO: Provisional Patent #63/912,406</p>
                         <p>METHODS AND SYSTEMS FOR OPTIMIZING A NATURAL LANGUAGE PROMPT</p>
                     </div>
-                    <div className="flex flex-wrap justify-center md:justify-end gap-4 md:gap-8" />
+                    <div className="flex flex-wrap justify-center md:justify-end gap-4 md:gap-8">
+                        <FooterLink href={APP_ROUTES.terms}>Terms &amp; Conditions</FooterLink>
+                        <FooterLink href={APP_ROUTES.privacy}>Privacy Policy</FooterLink>
+                    </div>
                 </div>
             </div>
         </footer>

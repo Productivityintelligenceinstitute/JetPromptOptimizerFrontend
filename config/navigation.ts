@@ -5,6 +5,8 @@ export const APP_ROUTES = {
   resources: "/resources",
   about: "/about",
   getStarted: "/get-started",
+  terms: "/terms",
+  privacy: "/privacy",
   login: "/login",
   signup: "/signup",
 } as const;
