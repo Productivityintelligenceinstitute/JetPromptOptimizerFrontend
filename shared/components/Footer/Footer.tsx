@@ -41,6 +41,7 @@ const Footer = () => {
                             <li><FooterLink href={APP_ROUTES.features}>Features</FooterLink></li>
                             <li><FooterLink href={APP_ROUTES.pricing}>Pricing</FooterLink></li>
                             <li><FooterLink href={APP_ROUTES.resources}>Resources</FooterLink></li>
+                            <li><FooterLink href={APP_ROUTES.faq}>FAQ</FooterLink></li>
                         </ul>
                     </div>
 
@@ -90,11 +91,11 @@ const FooterLink = ({ href, children }: { href: string; children: React.ReactNod
                     window.location.href = `/#${hash}`;
                     return;
                 }
-                // Scroll to section with offset (different for features vs pricing)
+                // Scroll to section with offset (different for features vs pricing vs faq)
                 setTimeout(() => {
                     const section = document.getElementById(hash);
                     if (section) {
-                        // Use smaller offset for features, standard for pricing
+                        // Use smaller offset for features, standard for pricing and faq
                         const offset = hash === 'features' ? 40 : 50;
                         const sectionTop = section.offsetTop;
                         window.scrollTo({

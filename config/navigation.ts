@@ -7,6 +7,7 @@ export const APP_ROUTES = {
   getStarted: "/get-started",
   terms: "/terms",
   privacy: "/privacy",
+  faq: "/#faq",
   login: "/login",
   signup: "/signup",
 } as const;

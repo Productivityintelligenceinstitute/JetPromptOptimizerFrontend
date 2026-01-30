@@ -10,6 +10,7 @@ import Guarantee from "@/shared/components/Homepage/Guarantee";
 import PricingCallout from "@/shared/components/Homepage/PricingCallout";
 import Design from "@/shared/components/Homepage/Design";
 import BonusSection from "@/shared/components/Homepage/BonusSection";
+import FAQ from "@/shared/components/Homepage/FAQ";
 export default function HomePage() {
   return (
     <main>
@@ -24,6 +25,7 @@ export default function HomePage() {
       <Design />
       <Pricing />
       <Testimonials />
+      <FAQ />
     </main>
   );
 }

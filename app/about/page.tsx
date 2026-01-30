@@ -111,73 +111,6 @@ const journeySteps = [
   },
 ];
 
-// const workflowSteps = [
-//   {
-//     step: "01",
-//     title: "Drop Your Messy Idea",
-//     text: "Start with your rough thoughts, incomplete sentences, scattered concepts.",
-//   },
-//   {
-//     step: "02",
-//     title: "AI Optimizes Everything",
-//     text: "JPO structures, validates, and enhances your prompt with precision.",
-//   },
-//   {
-//     step: "03",
-//     title: "Get the Output You MEANT",
-//     text: "Not the output you got — the output you intended.",
-//   },
-// ];
-
-// const ctaBenefits = [
-//   { label: "Move faster" },
-//   { label: "Lead smarter" },
-//   { label: "Never waste another minute rewriting prompts" },
-// ];
-
-// const executiveEducation = [
-//   {
-//     title: "University of Chicago",
-//     items: ["Chief Artificial Intelligence Officer Program"],
-//   },
-//   {
-//     title: "The Johns Hopkins University",
-//     items: ["Certificate in Agentic AI • Applied Generative AI • AI Business Strategy"],
-//   },
-//   {
-//     title: "Kellogg Executive Education",
-//     items: ["AI Application for Growth • Advanced Certificate in AI and Product Strategy"],
-//   },
-//   {
-//     title: "Wharton Executive Education",
-//     items: ["The Global C-Suite Program"],
-//   },
-//   {
-//     title: "Harvard Business School",
-//     items: ["Leading Professional Service Firm"],
-//   },
-// ];
-
-// const additionalCredentials = [
-//   {
-//     title: "Master of Music",
-//     subtitle: "Cincinnati Conservatory of Music",
-//   },
-//   {
-//     title: "Discipline and systems thinking applied to AI operations",
-//   },
-//   {
-//     title: "PMP, PfMP & Agile",
-//     subtitle: "Project Management Institute",
-//     detail: "Expertise in AI program execution and governance",
-//   },
-//   {
-//     title: "NMSDC Certification",
-//     subtitle: "Rutgers Graduate School",
-//     detail: "Center of Excellence COECP 1.0 and 2.0",
-//   },
-// ];
-
 export default function AboutPage() {
   return (
     <main className="min-h-screen bg-white">
@@ -238,6 +171,36 @@ export default function AboutPage() {
                 I lived it. Leaders, creators, entire teams came to me drained because their prompts were
                 unclear, inconsistent, and never captured the brilliance in their minds.
               </p>
+            </div>
+          </div>
+        </section>
+
+        {/* About the Founder */}
+        <section className="max-w-[1200px] mx-4 sm:mx-auto">
+          <div className="rounded-3xl bg-gradient-to-br from-[#2f4c84] to-[#1f3f73] p-8 md:p-12 text-white shadow-xl">
+            <div className="space-y-6">
+              <div className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-4 py-1.5 text-[13px] uppercase tracking-wide">
+                Founder
+              </div>
+              <div className="space-y-4">
+                <h2 className="text-2xl md:text-3xl font-semibold">
+                  Gerald J. Leonard
+                </h2>
+                <div className="space-y-3 text-[15px] md:text-[16px] leading-relaxed text-indigo-100">
+                  <p>
+                    Gerald J. Leonard is a seasoned AI transformation leader with executive training
+                    from the University of Chicago&apos;s Chief Artificial Intelligence Officer (CAIO)
+                    program. He founded Jet Prompt Optimizer to help leaders and teams get
+                    consistent, high-quality results from AI—without guesswork or wasted effort.
+                  </p>
+                  <p>
+                    His focus is on turning AI from experimentation into a reliable business capability
+                    through clarity, repeatability, and governance-ready thinking. Jet Prompt
+                    Optimizer reflects his belief that better prompts drive better decisions, stronger
+                    execution, and measurable outcomes.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -321,38 +284,6 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* Magic Workflow */}
-        {/* <section className="space-y-5">
-          <h2 className="text-2xl md:text-3xl font-semibold text-center text-jet-blue">
-            The Magic Workflow
-          </h2>
-          <p className="text-center text-sm text-gray-600">
-            See how JPO transforms chaos into clarity
-          </p>
-          <div className="mx-auto max-w-4xl space-y-4">
-            {workflowSteps.map((step, idx) => (
-              <div key={step.step} className="flex items-stretch gap-4">
-                <div className="flex flex-col items-center">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[#1f3f73] text-white text-sm font-semibold">
-                    {step.step}
-                  </span>
-                  {idx < workflowSteps.length - 1 ? (
-                    <span className="mt-2 w-[2px] flex-1 bg-[#1f3f73]/25 rounded-full" />
-                  ) : null}
-                </div>
-                <div className="flex-1 rounded-xl border border-gray-200 bg-white px-6 py-4 shadow-sm">
-                  <p className="font-semibold text-gray-900 text-[16px] md:text-[17px]">
-                    {step.title}
-                  </p>
-                  <p className="text-[14px] md:text-[15px] text-gray-700 mt-1">
-                    {step.text}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section> */}
-
         {/* Better Prompts Section */}
         <section className="bg-white py-8 max-w-[1200px] mx-4 sm:mx-auto">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -404,10 +335,7 @@ export default function AboutPage() {
 
             {/* Steps */}
             <div className="relative mx-auto max-w-[1100px]">
-              {/* Vertical Line - Hidden on mobile, visible on larger screens */}
-              {/* Positioned at center of nodes: nodes are 50px wide at md+, so center is at 25px */}
-              {/* Line starts from top edge of first node (node is 50px tall, centered with card) */}
-              {/* Estimated: card height ~100px, node centered, so top of node ~25px from top of step */}
+
               <div className="hidden md:block absolute left-[25px] top-[25px] bottom-0 w-0.5 bg-[#1f3f73]">
                 {/* Bottom circle */}
                 <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-[#1f3f73] rounded-full" />
@@ -659,159 +587,6 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* CTA */}
-        {/* <section className="rounded-[28px] bg-[#2f528b] text-white px-6 md:px-10 py-10 md:py-12 shadow-lg space-y-7">
-          <div className="space-y-2 text-center">
-            <p className="text-[26px] md:text-[30px] font-semibold">Ready to Stop Guessing?</p>
-            <p className="text-sm md:text-base text-indigo-100">
-              Start commanding AI with <span className="font-semibold underline decoration-[#f97316]">clarity</span>
-            </p>
-          </div>
-          <div className="flex flex-col md:flex-row justify-center items-center gap-4">
-            {ctaBenefits.map((benefit) => (
-              <div
-                key={benefit.label}
-                className="inline-flex items-center gap-2 rounded-full bg-white/05 border border-white/25 px-5 py-2 text-sm md:text-[15px]"
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white/60 text-[10px]">
-                  ✓
-                </span>
-                <span>{benefit.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="text-center pt-1">
-            <Link
-              href="/get-started"
-              className="inline-flex items-center justify-center rounded-full bg-signal-orange px-6 py-2.5 text-sm md:text-[15px] font-semibold text-white shadow-md hover:bg-orange-500 transition"
-            >
-              Step into Jet Optimizer
-            </Link>
-          </div>
-        </section> */}
-
-        {/* Educational Foundations */}
-        {/* <section className="space-y-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-            <div className="space-y-5">
-              <h2 className="text-[26px] md:text-[32px] font-semibold text-jet-blue leading-snug">
-                Educational & Professional{" "}
-                <br className="hidden md:block" />
-                Foundations
-              </h2>
-              <p className="text-sm md:text-[15px] text-gray-700 max-w-xl">
-                Strategic AI leadership through world-class executive education, advanced certifications,
-                and proven operational excellence in enterprise AI transformation.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                  { value: "10+", label: "Programs", icon: "📘" },
-                  { value: "5", label: "Universities", icon: "🎓" },
-                  { value: "C-Suite", label: "Certified", icon: "📄" },
-                ].map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="rounded-2xl border border-gray-200 bg-white px-5 py-4 text-center shadow-sm"
-                  >
-                    <div className="mb-3 flex items-center justify-center">
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef2ff] text-[#2f528b] text-lg">
-                        {stat.icon}
-                      </span>
-                    </div>
-                    <p className="text-lg font-semibold text-jet-blue">{stat.value}</p>
-                    <p className="text-xs text-gray-600 mt-1">{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="relative h-[260px] md:h-[280px] w-full rounded-2xl overflow-hidden shadow-lg">
-              <ImageWithFallback
-                src="/assets/about/wharton-group-photo.jpg"
-                alt="Executive education cohort"
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, 50vw"
-                placeholderText="Executive education cohort"
-              />
-            </div>
-          </div>
-        </section> */}
-
-        {/* Educational Partners Visual */}
-        {/* <section className="rounded-3xl shadow-lg bg-white border border-gray-100">
-          <div className="relative max-w-5xl mx-auto px-2 md:px-4 py-3 md:py-1">
-            <div className="relative w-full h-[220px] md:h-[280px] rounded-2xl overflow-hidden bg-gray-50">
-              <ImageWithFallback
-                src="/assets/about/educational-partners.png"
-                alt="Educational partners"
-                fill
-                className="object-contain p-4 md:p-6"
-                sizes="(max-width: 1280px) 100vw, 80vw"
-                placeholderText="Educational partners"
-              />
-            </div>
-          </div>
-        </section> */}
-
-        {/* Executive Education Accordions */}
-        {/* <section className="space-y-4">
-          <h3 className="text-xl md:text-2xl font-semibold text-jet-blue">
-            AI Executive Education
-          </h3>
-          <div className="space-y-3">
-            {executiveEducation.map((program) => (
-              <details
-                key={program.title}
-                className="group rounded-lg border border-gray-200 bg-white shadow-sm"
-                open
-              >
-                <summary className="flex items-center justify-between cursor-pointer px-4 py-3 text-sm font-semibold text-gray-800">
-                  <span>{program.title}</span>
-                  <span className="text-xs text-gray-500 group-open:rotate-180 transition-transform">
-                    ▼
-                  </span>
-                </summary>
-                <div className="border-t border-gray-100 px-4 py-3 text-sm text-gray-700">
-                  {program.items.join(" • ")}
-                </div>
-              </details>
-            ))}
-          </div>
-        </section> */}
-
-        {/* Additional Credentials */}
-        {/* <section className="space-y-4">
-          <h3 className="text-xl md:text-2xl font-semibold text-jet-blue">
-            Additional Credentials
-          </h3>
-          <div className="space-y-3">
-            {additionalCredentials.map((credential) => (
-              <details
-                key={credential.title}
-                className="group rounded-lg border border-gray-200 bg-white shadow-sm"
-                open
-              >
-                <summary className="flex items-center justify-between cursor-pointer px-4 py-3 text-sm font-semibold text-gray-800">
-                  <span>{credential.title}</span>
-                  <span className="text-xs text-gray-500 group-open:rotate-180 transition-transform">
-                    ▼
-                  </span>
-                </summary>
-                <div className="border-t border-gray-100 px-4 py-3 text-sm text-gray-700 space-y-1">
-                  {credential.subtitle ? <p>{credential.subtitle}</p> : null}
-                  {credential.detail ? (
-                    <p className="text-gray-600 text-xs">{credential.detail}</p>
-                  ) : null}
-                  {!credential.subtitle && !credential.detail ? (
-                    <p className="text-gray-600 text-xs">
-                      Discipline and systems thinking applied to AI operations.
-                    </p>
-                  ) : null}
-                </div>
-              </details>
-            ))}
-          </div>
-        </section> */}
       </div>
     </main>
   );
