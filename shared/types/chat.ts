@@ -27,6 +27,7 @@ export interface ChatMessage {
     role: string;
     content: string;
     message_id?: string;
+    prompt_type?: string; // 'basic' | 'structured' | 'system' | 'mastery'
 }
 
 export interface PaginatedChatMessages {

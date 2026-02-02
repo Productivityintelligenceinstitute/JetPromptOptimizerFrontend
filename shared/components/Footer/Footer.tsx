@@ -2,9 +2,7 @@ import React from "react";
 import Link from "next/link";
 import {
     FacebookIcon,
-    GithubIcon,
-    TwitterIcon,
-    GoogleIcon,
+    LinkedInIcon,
 } from "../../constants/FooterIcons";
 import { APP_ROUTES } from "@/config/navigation";
 
@@ -27,10 +25,8 @@ const Footer = () => {
                             </p>
                         </div>
                         <div className="flex gap-3">
-                            <SocialLink href="#" icon={<FacebookIcon />} />
-                            <SocialLink href="#" icon={<GithubIcon />} />
-                            <SocialLink href="#" icon={<TwitterIcon />} />
-                            <SocialLink href="#" icon={<GoogleIcon />} />
+                            <SocialLink href="https://www.facebook.com/share/1FXRu4p3oR/" icon={<FacebookIcon />} />
+                            <SocialLink href="https://www.linkedin.com/posts/leonard-productivity-intelligence-institute-llc_free-5-step-ai-prompt-checklist-boost-results-activity-7404194722446987264-vsCm?utm_source=share&utm_medium=member_ios&rcm=ACoAAAB19RoBWtREsObIKscuMT3JTHr3IXHJXAg" icon={<LinkedInIcon />} />
                         </div>
                     </div>
 
@@ -124,6 +120,8 @@ const FooterLink = ({ href, children }: { href: string; children: React.ReactNod
 const SocialLink = ({ href, icon }: { href: string; icon: React.ReactNode }) => (
     <Link
         href={href}
+        target="_blank"
+        rel="noopener noreferrer"
         className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-jet-blue shadow-sm hover:shadow-md hover:bg-gray-100 transition-all duration-200"
     >
         {icon}

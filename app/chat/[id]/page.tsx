@@ -211,25 +211,31 @@ function ChatSessionContent() {
                 const response = await getChatMessages(chatId);
                 
                 // Determine the optimization level for formatting
-                // First try to detect from the first assistant message
+                // First try to use prompt_type from the first assistant message
                 let detectedLevel: OptimizationLevelKey = 'basic';
                 const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
-                if (firstAssistant && firstAssistant.content) {
-                    try {
-                        const parsed = JSON.parse(firstAssistant.content);
-                        if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
-                            detectedLevel = 'mastery';
-                        } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
-                            // New system prompt structure or legacy format
-                            detectedLevel = 'system';
-                        } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
-                            detectedLevel = 'structured';
-                        }
-                    } catch {
-                        // Not JSON, use level detection
-                        const detected = detectOptimizationLevel(firstAssistant.content);
-                        if (detected) {
-                            detectedLevel = detected.level as OptimizationLevelKey;
+                if (firstAssistant) {
+                    // Use prompt_type if available (preferred method)
+                    if (firstAssistant?.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.prompt_type)) {
+                        detectedLevel = firstAssistant.prompt_type as OptimizationLevelKey;
+                    } else if (firstAssistant.content) {
+                        // Fallback to content-based detection
+                        try {
+                            const parsed = JSON.parse(firstAssistant.content);
+                            if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                                detectedLevel = 'mastery';
+                            } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                                // New system prompt structure or legacy format
+                                detectedLevel = 'system';
+                            } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                                detectedLevel = 'structured';
+                            }
+                        } catch {
+                            // Not JSON, use level detection
+                            const detected = detectOptimizationLevel(firstAssistant.content);
+                            if (detected) {
+                                detectedLevel = detected.level as OptimizationLevelKey;
+                            }
                         }
                     }
                 }
@@ -249,22 +255,29 @@ function ChatSessionContent() {
                         
                         let content = msg.content;
                         
-                        // For assistant messages, try to parse and format JSON according to level
+                        // For assistant messages, use prompt_type if available, otherwise fall back to auto-detection
                         if (msg.role === 'assistant' && typeof content === 'string') {
                             // Try to parse as JSON
                             try {
                                 const parsed = JSON.parse(content);
-                                // Auto-detect level if not set, then format
-                                let actualLevel = levelKey;
-                                if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
-                                    actualLevel = 'mastery';
-                                } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
-                                    actualLevel = 'system';
-                                } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
-                                    actualLevel = 'structured';
+                                // Use prompt_type from message if available, otherwise auto-detect
+                                let actualLevel: OptimizationLevelKey = levelKey;
+                                
+                                if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
+                                    // Use prompt_type from backend response
+                                    actualLevel = msg.prompt_type as OptimizationLevelKey;
+                                } else {
+                                    // Fallback to auto-detection for backward compatibility
+                                    if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                                        actualLevel = 'mastery';
+                                    } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                                        actualLevel = 'system';
+                                    } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                                        actualLevel = 'structured';
+                                    }
                                 }
                                 
-                                // Format according to detected level
+                                // Format according to prompt_type or detected level
                                 if (actualLevel === 'mastery') {
                                     content = formatMasterLevelResponse(parsed);
                                 } else if (actualLevel === 'system') {
@@ -277,13 +290,18 @@ function ChatSessionContent() {
                                 content = formatMessage(msg.role, content);
                             }
                         } else if (msg.role === 'assistant') {
-                            // Already an object, format it
-                            if (levelKey === 'mastery') {
+                            // Already an object, use prompt_type if available
+                            let actualLevel: OptimizationLevelKey = levelKey;
+                            if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
+                                actualLevel = msg.prompt_type as OptimizationLevelKey;
+                            }
+                            
+                            if (actualLevel === 'mastery') {
                                 content = formatMasterLevelResponse(content);
-                            } else if (levelKey === 'system') {
+                            } else if (actualLevel === 'system') {
                                 content = formatSystemLevelResponse(content);
                             } else {
-                                content = formatOptimizationResponse(content, levelKey);
+                                content = formatOptimizationResponse(content, actualLevel);
                             }
                         } else {
                             // User messages - return as-is
@@ -301,14 +319,23 @@ function ChatSessionContent() {
                 // Preserve static message when loading messages
                 setMessages(preserveStaticMessage(formattedMessages));
                 
-                // Detect level from raw content (before formatting) if we don't have a level yet
+                // Detect level from prompt_type or content (before formatting) if we don't have a level yet
                 // Find the first assistant message in chronological order (before reverse)
                 if (!chatLevel && response.items.length > 0) {
                     const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
-                    if (firstAssistant && firstAssistant.content) {
-                        const detected = detectOptimizationLevel(firstAssistant.content);
-                        if (detected && detected.level !== 'basic') {
-                            setChatLevel(detected);
+                    if (firstAssistant) {
+                        // Prefer prompt_type if available
+                        if (firstAssistant.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.prompt_type)) {
+                            const levelFromType = OPTIMIZATION_LEVELS[firstAssistant.prompt_type as OptimizationLevel];
+                            if (levelFromType) {
+                                setChatLevel(levelFromType);
+                            }
+                        } else if (firstAssistant.content) {
+                            // Fallback to content-based detection
+                            const detected = detectOptimizationLevel(firstAssistant.content);
+                            if (detected && detected.level !== 'basic') {
+                                setChatLevel(detected);
+                            }
                         }
                     }
                 }
@@ -480,22 +507,29 @@ function ChatSessionContent() {
                                     
                                     let content = msg.content;
                                     
-                                    // For assistant messages, try to parse and format JSON according to level
+                                    // For assistant messages, use prompt_type if available, otherwise fall back to auto-detection
                                     if (msg.role === 'assistant' && typeof content === 'string') {
                                         // Try to parse as JSON
                                         try {
                                             const parsed = JSON.parse(content);
-                                            // Auto-detect level from content structure
-                                            let actualLevel = levelKey;
-                                            if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
-                                                actualLevel = 'mastery';
-                                            } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
-                                                actualLevel = 'system';
-                                            } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
-                                                actualLevel = 'structured';
+                                            // Use prompt_type from message if available, otherwise auto-detect
+                                            let actualLevel: OptimizationLevelKey = levelKey;
+                                            
+                                            if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
+                                                // Use prompt_type from backend response
+                                                actualLevel = msg.prompt_type as OptimizationLevelKey;
+                                            } else {
+                                                // Fallback to auto-detection for backward compatibility
+                                                if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
+                                                    actualLevel = 'mastery';
+                                                } else if (parsed.system_prompt || parsed.key_enhancements || parsed.role || parsed.objective || parsed.audience || parsed.context) {
+                                                    actualLevel = 'system';
+                                                } else if (parsed.techniques_applied || (parsed.optimized_prompt && typeof parsed.optimized_prompt === 'object')) {
+                                                    actualLevel = 'structured';
+                                                }
                                             }
                                             
-                                            // Format according to detected level
+                                            // Format according to prompt_type or detected level
                                             if (actualLevel === 'mastery') {
                                                 content = formatMasterLevelResponse(parsed);
                                             } else if (actualLevel === 'system') {
@@ -508,14 +542,19 @@ function ChatSessionContent() {
                                             content = formatMessage(msg.role, content);
                                         }
                                     } else if (msg.role === 'assistant') {
-                                        // Already an object, auto-detect level and format it
-                                        let actualLevel = levelKey;
-                                        if (content.overview || content.deconstruct || content.diagnose || content.develop || content.deliver) {
-                                            actualLevel = 'mastery';
-                                        } else if (content.system_prompt || content.key_enhancements || content.role || content.objective || content.audience || content.context) {
-                                            actualLevel = 'system';
-                                        } else if (content.techniques_applied || (content.optimized_prompt && typeof content.optimized_prompt === 'object')) {
-                                            actualLevel = 'structured';
+                                        // Already an object, use prompt_type if available
+                                        let actualLevel: OptimizationLevelKey = levelKey;
+                                        if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
+                                            actualLevel = msg.prompt_type as OptimizationLevelKey;
+                                        } else {
+                                            // Fallback to auto-detection
+                                            if (content.overview || content.deconstruct || content.diagnose || content.develop || content.deliver) {
+                                                actualLevel = 'mastery';
+                                            } else if (content.system_prompt || content.key_enhancements || content.role || content.objective || content.audience || content.context) {
+                                                actualLevel = 'system';
+                                            } else if (content.techniques_applied || (content.optimized_prompt && typeof content.optimized_prompt === 'object')) {
+                                                actualLevel = 'structured';
+                                            }
                                         }
                                         
                                         if (actualLevel === 'mastery') {

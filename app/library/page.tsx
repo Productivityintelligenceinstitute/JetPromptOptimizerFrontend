@@ -144,7 +144,7 @@ function LibraryContent() {
                                 Prompt Library
                             </h1>
                             <p className="text-sm sm:text-base text-gray-600">
-                                Discover and use prompts shared by the community
+                            Save your prompts as templates to share with your colleagues and others.
                             </p>
                         </div>
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">

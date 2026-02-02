@@ -50,7 +50,13 @@ export default function Hero() {
             </p>
           </div>
 
-          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+          <p className="mt-6 text-center text-base text-gray-700 sm:text-lg leading-relaxed max-w-2xl mx-auto">
+            Jet is an AI enablement layer that improves output quality before prompts ever reach the model.
+            <br />
+            For a faster start, please watch the demo video and review the FAQ section below before getting started for FREE!
+          </p>
+
+          <div className="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             {/* <button
             type="button"
             className="inline-flex items-center  h-[40px] justify-center rounded-md bg-jet-blue px-10 py-3 text-sm font-medium text-soft-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2 focus-visible:ring-offset-soft-white"
