@@ -95,7 +95,7 @@ export default function ProfilePage() {
           <section className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
             <h1 className="text-2xl font-semibold text-jet-blue mb-2">Profile</h1>
             <p className="text-sm text-gray-600 mb-6">
-              View your account details. Some information is managed through your authentication provider.
+              View your account details.
             </p>
             <div className="space-y-4">
               <div>
