@@ -398,6 +398,14 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                             <span>Pricing</span>
                                         </Link>
 
+                                        <Link
+                                            href="/profile"
+                                            onClick={() => setIsDropdownOpen(false)}
+                                            className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                        >
+                                            <span>Profile</span>
+                                        </Link>
+
                                         {user?.role === 'admin' && (
                                             <Link
                                                 href="/admin"
@@ -485,6 +493,14 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                         className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
                                     >
                                         <span>Pricing</span>
+                                    </Link>
+
+                                    <Link
+                                        href="/profile"
+                                        onClick={() => setIsDropdownOpen(false)}
+                                        className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
+                                    >
+                                        <span>Profile</span>
                                     </Link>
 
                                     {user?.role === 'admin' && (

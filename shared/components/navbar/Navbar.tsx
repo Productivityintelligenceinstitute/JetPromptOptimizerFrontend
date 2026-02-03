@@ -305,6 +305,16 @@ export function Navbar() {
                 </Link>
               </li>
             )}
+            {user && (
+              <li>
+                <Link
+                  href="/profile"
+                  className="relative transition-colors hover:text-jet-blue py-2 text-gray-700"
+                >
+                  Profile
+                </Link>
+              </li>
+            )}
           </ul>
 
           {user ? (
@@ -407,6 +417,16 @@ export function Navbar() {
                     onClick={() => setMobileOpen(false)}
                   >
                     <span>Chats</span>
+                    <span className="text-xs text-gray-500">›</span>
+                  </Link>
+                )}
+                {user && (
+                  <Link
+                    href="/profile"
+                    className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-gray-50"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <span>Profile</span>
                     <span className="text-xs text-gray-500">›</span>
                   </Link>
                 )}

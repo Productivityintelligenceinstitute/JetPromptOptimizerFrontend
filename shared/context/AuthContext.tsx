@@ -8,9 +8,14 @@ import {
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  updatePassword,
+  updateProfile as updateFirebaseProfile,
 } from 'firebase/auth';
 import { auth } from '@/shared/lib/firebase';
 import { syncUserWithBackend, SyncedUser } from '@/shared/services/userSyncService';
+import { createAccount } from '@/shared/api/user';
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_EXPIRY_DAYS } from '@/shared/constants/auth';
 import { logError } from '@/shared/utils/errorHandler';
 
@@ -32,6 +37,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  updateProfile: (name: string) => Promise<void>;
   refreshUser: () => Promise<void>;
   isLoading: boolean;
   isInitialized: boolean;
@@ -268,7 +275,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signup = useCallback(async (email: string, password: string, name?: string): Promise<void> => {
     setIsLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      // Set the displayName if name is provided
+      if (name && userCredential.user) {
+        await updateFirebaseProfile(userCredential.user, {
+          displayName: name,
+        });
+      }
       // Auth state change will handle user sync
     } catch (error) {
       logError(error, 'AuthProvider.signup');
@@ -309,12 +322,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [handleUserSync]);
 
+  /**
+   * Updates the user's profile name.
+   * Updates both Firebase displayName and backend full_name.
+   */
+  const updateProfile = useCallback(
+    async (name: string): Promise<void> => {
+      const firebaseUser = auth.currentUser;
+
+      if (!firebaseUser) {
+        throw new Error('No authenticated user found');
+      }
+
+      setIsLoading(true);
+
+      try {
+        // Update Firebase displayName
+        await updateFirebaseProfile(firebaseUser, {
+          displayName: name,
+        });
+
+        // Update backend full_name using createAccount (idempotent)
+        await createAccount({
+          full_name: name,
+        });
+
+        // Re-sync user with backend to get updated data
+        await handleUserSync(firebaseUser);
+      } catch (error) {
+        logError(error, 'AuthProvider.updateProfile');
+        throw error;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [handleUserSync]
+  );
+
+  /**
+   * Changes the current user's password.
+   * Requires re-authentication with the current password for security.
+   */
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string): Promise<void> => {
+      const firebaseUser = auth.currentUser;
+
+      if (!firebaseUser || !firebaseUser.email) {
+        throw new Error('No authenticated user found');
+      }
+
+      setIsLoading(true);
+
+      try {
+        // Re-authenticate the user with their current credentials
+        const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+        await reauthenticateWithCredential(firebaseUser, credential);
+
+        // Update password in Firebase
+        await updatePassword(firebaseUser, newPassword);
+
+        // Re-sync user with backend so any token-related changes are propagated
+        await handleUserSync(firebaseUser);
+      } catch (error) {
+        logError(error, 'AuthProvider.changePassword');
+        throw error;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [handleUserSync]
+  );
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       login, 
       signup, 
       logout,
+      changePassword,
+      updateProfile,
       refreshUser,
       isLoading,
       isInitialized,
