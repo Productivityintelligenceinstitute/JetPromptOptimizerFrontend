@@ -211,13 +211,13 @@ function ChatSessionContent() {
                 const response = await getChatMessages(chatId);
                 
                 // Determine the optimization level for formatting
-                // First try to use prompt_type from the first assistant message
+                // First try to use message_type from the first assistant message
                 let detectedLevel: OptimizationLevelKey = 'basic';
                 const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
                 if (firstAssistant) {
-                    // Use prompt_type if available (preferred method)
-                    if (firstAssistant?.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.prompt_type)) {
-                        detectedLevel = firstAssistant.prompt_type as OptimizationLevelKey;
+                    // Use message_type if available (preferred method)
+                    if (firstAssistant?.message_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.message_type)) {
+                        detectedLevel = firstAssistant.message_type as OptimizationLevelKey;
                     } else if (firstAssistant.content) {
                         // Fallback to content-based detection
                         try {
@@ -255,17 +255,17 @@ function ChatSessionContent() {
                         
                         let content = msg.content;
                         
-                        // For assistant messages, use prompt_type if available, otherwise fall back to auto-detection
+                        // For assistant messages, use message_type if available, otherwise fall back to auto-detection
                         if (msg.role === 'assistant' && typeof content === 'string') {
                             // Try to parse as JSON
                             try {
                                 const parsed = JSON.parse(content);
-                                // Use prompt_type from message if available, otherwise auto-detect
+                                // Use message_type from message if available, otherwise auto-detect
                                 let actualLevel: OptimizationLevelKey = levelKey;
                                 
-                                if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
-                                    // Use prompt_type from backend response
-                                    actualLevel = msg.prompt_type as OptimizationLevelKey;
+                                if (msg.message_type && ['basic', 'structured', 'system', 'master'].includes(msg.message_type)) {
+                                    // Use message_type from backend response
+                                    actualLevel = msg.message_type as OptimizationLevelKey;
                                 } else {
                                     // Fallback to auto-detection for backward compatibility
                                     if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
@@ -277,7 +277,7 @@ function ChatSessionContent() {
                                     }
                                 }
                                 
-                                // Format according to prompt_type or detected level
+                                // Format according to message_type or detected level
                                 if (actualLevel === 'mastery') {
                                     content = formatMasterLevelResponse(parsed);
                                 } else if (actualLevel === 'system') {
@@ -290,10 +290,10 @@ function ChatSessionContent() {
                                 content = formatMessage(msg.role, content);
                             }
                         } else if (msg.role === 'assistant') {
-                            // Already an object, use prompt_type if available
+                            // Already an object, use message_type if available
                             let actualLevel: OptimizationLevelKey = levelKey;
-                            if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
-                                actualLevel = msg.prompt_type as OptimizationLevelKey;
+                            if (msg.message_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.message_type)) {
+                                actualLevel = msg.message_type as OptimizationLevelKey;
                             }
                             
                             if (actualLevel === 'mastery') {
@@ -319,14 +319,14 @@ function ChatSessionContent() {
                 // Preserve static message when loading messages
                 setMessages(preserveStaticMessage(formattedMessages));
                 
-                // Detect level from prompt_type or content (before formatting) if we don't have a level yet
+                // Detect level from message_type or content (before formatting) if we don't have a level yet
                 // Find the first assistant message in chronological order (before reverse)
                 if (!chatLevel && response.items.length > 0) {
                     const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
                     if (firstAssistant) {
-                        // Prefer prompt_type if available
-                        if (firstAssistant.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.prompt_type)) {
-                            const levelFromType = OPTIMIZATION_LEVELS[firstAssistant.prompt_type as OptimizationLevel];
+                        // Prefer message_type if available
+                        if (firstAssistant.message_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.message_type)) {
+                            const levelFromType = OPTIMIZATION_LEVELS[firstAssistant.message_type as OptimizationLevel];
                             if (levelFromType) {
                                 setChatLevel(levelFromType);
                             }
@@ -507,17 +507,17 @@ function ChatSessionContent() {
                                     
                                     let content = msg.content;
                                     
-                                    // For assistant messages, use prompt_type if available, otherwise fall back to auto-detection
+                                    // For assistant messages, use message_type if available, otherwise fall back to auto-detection
                                     if (msg.role === 'assistant' && typeof content === 'string') {
                                         // Try to parse as JSON
                                         try {
                                             const parsed = JSON.parse(content);
-                                            // Use prompt_type from message if available, otherwise auto-detect
+                                            // Use message_type from message if available, otherwise auto-detect
                                             let actualLevel: OptimizationLevelKey = levelKey;
                                             
-                                            if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
-                                                // Use prompt_type from backend response
-                                                actualLevel = msg.prompt_type as OptimizationLevelKey;
+                                            if (msg.message_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.message_type)) {
+                                                // Use message_type from backend response
+                                                actualLevel = msg.message_type as OptimizationLevelKey;
                                             } else {
                                                 // Fallback to auto-detection for backward compatibility
                                                 if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
@@ -529,7 +529,7 @@ function ChatSessionContent() {
                                                 }
                                             }
                                             
-                                            // Format according to prompt_type or detected level
+                                            // Format according to message_type or detected level
                                             if (actualLevel === 'mastery') {
                                                 content = formatMasterLevelResponse(parsed);
                                             } else if (actualLevel === 'system') {
@@ -542,10 +542,10 @@ function ChatSessionContent() {
                                             content = formatMessage(msg.role, content);
                                         }
                                     } else if (msg.role === 'assistant') {
-                                        // Already an object, use prompt_type if available
+                                        // Already an object, use message_type if available
                                         let actualLevel: OptimizationLevelKey = levelKey;
-                                        if (msg.prompt_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.prompt_type)) {
-                                            actualLevel = msg.prompt_type as OptimizationLevelKey;
+                                        if (msg.message_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.message_type)) {
+                                            actualLevel = msg.message_type as OptimizationLevelKey;
                                         } else {
                                             // Fallback to auto-detection
                                             if (content.overview || content.deconstruct || content.diagnose || content.develop || content.deliver) {
