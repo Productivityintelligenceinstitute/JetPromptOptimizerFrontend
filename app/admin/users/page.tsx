@@ -105,6 +105,24 @@ function AdminUsersContent() {
     [itemsPerPage, totalItems]
   );
 
+  function formatPackageLevel(pkg: string | null | undefined): string {
+    if (!pkg) return "No subscription";
+    const n = pkg.toLowerCase();
+    if (n === "essential") return "Essential";
+    if (n === "pro") return "Pro";
+    if (n === "trial") return "Trial";
+    return pkg.charAt(0).toUpperCase() + pkg.slice(1);
+  }
+
+  function subscriptionStatusClass(status: string | null | undefined): string {
+    const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ";
+    const s = (status || "").toLowerCase();
+    if (s === "active" || s === "trialing") return base + "bg-green-100 text-green-800";
+    if (s === "canceled" || s === "cancelled" || s === "expired" || s === "no subscription") return base + "bg-red-100 text-red-800";
+    if (s === "past due" || s === "suspended") return base + "bg-amber-100 text-amber-800";
+    return base + "bg-gray-100 text-gray-800";
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminNavbar />
@@ -167,10 +185,19 @@ function AdminUsersContent() {
                       Name
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Role
+                      Package Level
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created At
+                      Subscription Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Created On
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Expiry
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Role
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Firebase UID
@@ -185,6 +212,24 @@ function AdminUsersContent() {
                         <td className="px-4 py-3 text-sm text-gray-900">{u.email}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {u.full_name || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {formatPackageLevel(u.package_name)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={subscriptionStatusClass(u.subscription_status)}>
+                            {u.subscription_status || "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {u.created_at
+                            ? new Date(u.created_at).toLocaleDateString()
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {u.expiry_date
+                            ? new Date(u.expiry_date).toLocaleDateString()
+                            : "—"}
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <div className="flex items-center gap-2">
@@ -211,11 +256,6 @@ function AdminUsersContent() {
                                   : "Save"}
                             </button>
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {u.created_at
-                            ? new Date(u.created_at).toLocaleDateString()
-                            : "—"}
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">
                           {u.firebase_uid || "—"}

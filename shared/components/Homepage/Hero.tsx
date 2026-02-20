@@ -53,7 +53,7 @@ export default function Hero() {
           <p className="mt-6 text-center text-base text-gray-700 sm:text-lg leading-relaxed max-w-2xl mx-auto">
             Jet is an AI enablement layer that improves output quality before prompts ever reach the model.
             <br />
-            For a faster start, please watch the demo video and review the FAQ section below before getting started for FREE!
+            For a faster start, please watch the demo video and review the FAQ section below before getting started with your 14-day free trial!
           </p>
 
           <div className="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">

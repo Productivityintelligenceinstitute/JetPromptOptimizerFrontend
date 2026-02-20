@@ -85,9 +85,10 @@ export function detectOptimizationLevel(prompt: string): OptimizationLevelInfo {
  * Checks if a user has permission for a specific optimization level
  * Based on package permissions:
  * - Admin: Full access to all levels (no restrictions)
- * - Free: Only BASIC_OPT (5 queries/day)
- * - Essential: BASIC_OPT (unlimited) + STRUCT_OPT (unlimited)
- * - Pro: All levels (MASTER_OPT has 50/day limit, others unlimited)
+ * - Trial: BASIC_OPT (5/day), STRUCT_OPT (1/day), MASTER_OPT (5 total over 14 days)
+ * - Essential: BASIC_OPT + STRUCT_OPT (unlimited)
+ * - Pro: All levels (MASTER_OPT 50/day, SYS_OPT unlimited)
+ * - Free / no subscription: No access (must subscribe)
  */
 export function hasPermissionForLevel(
   packageName: string | undefined | null,
@@ -101,18 +102,28 @@ export function hasPermissionForLevel(
   
   const normalizedPackage = packageName?.toLowerCase() || 'free';
   
+  // No access for free / no subscription
+  if (normalizedPackage === 'free' || !packageName) {
+    return level === 'basic'; // Basic only if backend assigns free (legacy)
+  }
+  
   // Basic level is available to all plans
   if (level === 'basic') {
     return true;
   }
   
-  // Structured level is available to Essential and Pro
+  // Structured level: Trial (1/day), Essential, Pro
   if (level === 'structured') {
-    return normalizedPackage !== 'free';
+    return ['trial', 'essential', 'pro'].includes(normalizedPackage);
   }
   
-  // Mastery and System levels are only available to Pro
-  if (level === 'mastery' || level === 'system') {
+  // Mastery: Trial (5 total over trial), Pro (50/day)
+  if (level === 'mastery') {
+    return normalizedPackage === 'pro' || normalizedPackage === 'trial';
+  }
+  
+  // System level: Pro only
+  if (level === 'system') {
     return normalizedPackage === 'pro';
   }
   

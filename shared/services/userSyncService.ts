@@ -19,6 +19,7 @@ export interface SyncedUser {
     role: string;
     token: string;
     packageName?: string;
+    trialEndsAt?: string | null;
 }
 
 export interface UserSyncResult {
@@ -104,6 +105,7 @@ export const syncUserWithBackend = async (
             role: userData.role,
             token,
             packageName: userData.package_name,
+            trialEndsAt: userData.trial_ends_at ?? userData.end_date ?? null,
         };
 
         return {

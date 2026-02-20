@@ -18,6 +18,7 @@ import { syncUserWithBackend, SyncedUser } from '@/shared/services/userSyncServi
 import { createAccount } from '@/shared/api/user';
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_EXPIRY_DAYS } from '@/shared/constants/auth';
 import { logError } from '@/shared/utils/errorHandler';
+import { UserNotFoundError } from '@/shared/types/errors';
 
 /**
  * User interface matching backend user data structure
@@ -30,6 +31,7 @@ export interface User {
   token: string;
   role: string;
   package_name?: string; // Active subscription package name
+  trial_ends_at?: string | null; // Trial end timestamp (ISO)
 }
 
 interface AuthContextType {
@@ -40,6 +42,9 @@ interface AuthContextType {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   updateProfile: (name: string) => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** Set when login was rejected (e.g. deleted user). Login page shows this then clears it. */
+  loginRejectedReason: string | null;
+  clearLoginRejectedReason: () => void;
   isLoading: boolean;
   isInitialized: boolean;
 }
@@ -58,6 +63,7 @@ const mapSyncedUserToUser = (syncedUser: SyncedUser, firebaseUid: string): User 
     token: syncedUser.token,
     role: syncedUser.role,
     package_name: syncedUser.packageName,
+    trial_ends_at: syncedUser.trialEndsAt ?? null,
   };
 };
 
@@ -93,10 +99,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(() => loadUserFromStorage());
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [loginRejectedReason, setLoginRejectedReason] = useState<string | null>(null);
   
   // Use ref to track current sync operation and prevent race conditions
   const syncInProgressRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+
+  const clearLoginRejectedReason = useCallback(() => {
+    setLoginRejectedReason(null);
+  }, []);
+
+  /**
+   * Handles user logout (clears local state only; Firebase signOut is separate)
+   */
+  const handleLogout = useCallback(() => {
+    setUser(null);
+    saveUserToStorage(null);
+    Cookies.remove(AUTH_COOKIE_NAME);
+    syncInProgressRef.current = null;
+  }, []);
 
   /**
    * Handles user synchronization with backend
@@ -136,12 +157,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (syncResult.error) {
           logError(syncResult.error, 'AuthProvider.handleUserSync');
         }
+      } else if (syncResult.error instanceof UserNotFoundError) {
+        // User not found in backend (e.g. soft-deleted account)
+        // Set reason so login page can show "Invalid credentials" without flashing for valid users
+        setLoginRejectedReason('Invalid credentials');
+        handleLogout();
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          logError(signOutError, 'AuthProvider.handleUserSync.signOut');
+          // State already cleared by handleLogout
+        }
       } else {
         // Complete failure - but Firebase says user is authenticated
-        // Don't log out - use Firebase data as fallback
-        // Only log out if Firebase itself says user is not authenticated
+        // Use Firebase data as fallback for transient backend errors
         logError(syncResult.error || new Error('User sync failed'), 'AuthProvider.handleUserSync');
-        // Create fallback user from Firebase data
         const fallbackToken = await firebaseUser.getIdToken();
         Cookies.set(AUTH_COOKIE_NAME, fallbackToken, { expires: AUTH_COOKIE_EXPIRY_DAYS });
         const fallbackUser = {
@@ -177,17 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         syncInProgressRef.current = null;
       }
     }
-  }, []);
-
-  /**
-   * Handles user logout
-   */
-  const handleLogout = useCallback(() => {
-    setUser(null);
-    saveUserToStorage(null);
-    Cookies.remove(AUTH_COOKIE_NAME);
-    syncInProgressRef.current = null;
-  }, []);
+  }, [handleLogout]);
 
   // Initialize auth state listener
   useEffect(() => {
@@ -276,11 +296,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      // Set the displayName if name is provided
-      if (name && userCredential.user) {
-        await updateFirebaseProfile(userCredential.user, {
+      const firebaseUser = userCredential.user;
+      // Set the displayName if name is provided (before sync so backend gets name)
+      if (name && firebaseUser) {
+        await updateFirebaseProfile(firebaseUser, {
           displayName: name,
         });
+      }
+      // Ensure backend gets full_name on first create: set cookie and call createAccount
+      // (onAuthStateChanged may fire before displayName is visible; this guarantees name is sent)
+      if (firebaseUser && name?.trim()) {
+        try {
+          const token = await firebaseUser.getIdToken();
+          Cookies.set(AUTH_COOKIE_NAME, token, { expires: AUTH_COOKIE_EXPIRY_DAYS });
+          await createAccount({ full_name: name.trim() });
+        } catch (e) {
+          logError(e, 'AuthProvider.signup.createAccount');
+        }
       }
       // Auth state change will handle user sync
     } catch (error) {
@@ -402,6 +434,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       changePassword,
       updateProfile,
       refreshUser,
+      loginRejectedReason,
+      clearLoginRejectedReason,
       isLoading,
       isInitialized,
     }}>

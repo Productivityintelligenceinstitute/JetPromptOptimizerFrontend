@@ -67,21 +67,20 @@ export default function OptimizationLevelInfoBanner({ levelInfo }: OptimizationL
   const isAdmin = user?.role === 'admin';
 
   // Determine query limits based on package and level
-  // Admin users have unlimited access to all levels
   const getQueryLimit = () => {
-    if (isAdmin) {
-      return 'Unlimited';
-    }
+    if (isAdmin) return 'Unlimited';
     
     if (levelInfo.level === 'basic') {
-      if (packageName === 'free') return '5 queries per day';
+      if (packageName === 'trial' || packageName === 'free') return '5 queries per day';
       return 'Unlimited';
     }
     if (levelInfo.level === 'structured') {
+      if (packageName === 'trial') return '1 query per day';
       return 'Unlimited';
     }
     if (levelInfo.level === 'mastery') {
       if (packageName === 'pro') return '50 queries per day';
+      if (packageName === 'trial') return '5 total over trial';
       return 'Upgrade to Pro';
     }
     if (levelInfo.level === 'system') {
