@@ -28,23 +28,28 @@ export default function Pricing() {
 
     // Normalize plan name for comparison (handle case differences)
     const normalizedPlanName = planName.toLowerCase();
-    const isFreePlan = normalizedPlanName === 'free';
+    const isTrialPlan = normalizedPlanName === 'trial';
 
     // Check if user is authenticated
     if (!user) {
-      // If not authenticated and clicking free plan, redirect to signup
-      if (isFreePlan) {
+      // If not authenticated and clicking trial, redirect to signup (signup = start trial)
+      if (isTrialPlan) {
         router.push(APP_ROUTES.signup);
         return;
       }
-      // For other plans, redirect to signup (or could redirect to login)
       router.push(APP_ROUTES.signup);
       return;
     }
 
     // User is authenticated
-    if (isFreePlan) {
-      // User is already on free plan (they get it by default when signing up)
+    if (isTrialPlan) {
+      // If already on trial, no action
+      if (user.package_name?.toLowerCase() === 'trial') return;
+      // No subscription - redirect to signup to start trial
+      if (!user.package_name || user.package_name?.toLowerCase() === 'free') {
+        router.push(APP_ROUTES.signup);
+        return;
+      }
       return;
     }
 
@@ -91,16 +96,16 @@ export default function Pricing() {
 
   const getButtonText = (planName: string): string => {
     const normalizedPlanName = planName.toLowerCase();
-    const isFreePlan = normalizedPlanName === 'free';
+    const isTrialPlan = normalizedPlanName === 'trial';
 
     // Premium / Enterprise plan shows "Book a call"
     if (planName === 'Premium / Enterprise') {
       return 'Book a call';
     }
 
-    // If user is authenticated and has free plan, show "Subscribed"
-    if (user && isFreePlan && user.package_name?.toLowerCase() === 'free') {
-      return 'Subscribed';
+    // Trial plan: show "Current plan" if on trial, "Start Trial" if not
+    if (user && isTrialPlan) {
+      return user.package_name?.toLowerCase() === 'trial' ? 'Current plan' : 'Start Trial';
     }
 
     // Default to plan's CTA text
@@ -111,8 +116,7 @@ export default function Pricing() {
     if (!user) return false;
     const normalizedPlanName = planName.toLowerCase();
     const userPackage = user.package_name?.toLowerCase();
-
-    // Check if user's current package matches this plan
+    if (normalizedPlanName === 'trial') return userPackage === 'trial';
     return userPackage === normalizedPlanName;
   };
 

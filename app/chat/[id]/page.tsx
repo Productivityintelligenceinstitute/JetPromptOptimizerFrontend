@@ -135,7 +135,7 @@ function ChatSessionContent() {
         if (!effectiveLevel || !user) return;
         // Allow admins to access all levels regardless of package
         const isAdmin = user.role === 'admin';
-        if (isStructuredLevel && user.package_name === 'free' && !isAdmin) {
+        if (isStructuredLevel && (user.package_name === 'free' || !user.package_name) && !isAdmin) {
             router.replace('/chat');
         }
     }, [effectiveLevel, isStructuredLevel, user?.package_name, user, router]);
@@ -614,13 +614,19 @@ function ChatSessionContent() {
                 },
                 onError: (messageText) => {
                     setIsStreaming(false);
-                    // Remove optimistic user message but preserve static message
                     setMessages((prev) => preserveStaticMessage(prev.slice(0, -1)));
-                    // Show error in toast notification instead of chat
-                    setNotification({
-                        message: messageText || "Sorry, something went wrong while optimizing your prompt. Please try again.",
-                        type: 'error'
-                    });
+                    const msg = (messageText || "").toLowerCase();
+                    // Show upgrade/limit modals for subscription/trial/limit errors
+                    if (msg.includes("trial expired") || msg.includes("no active subscription") || msg.includes("subscription")) {
+                        setShowUpgradeModal(true);
+                    } else if (msg.includes("limit") || msg.includes("quota") || msg.includes("daily")) {
+                        setShowLimitModal(true);
+                    } else {
+                        setNotification({
+                            message: messageText || "Sorry, something went wrong while optimizing your prompt. Please try again.",
+                            type: 'error'
+                        });
+                    }
                 },
                 onCancelled: () => {
                     setIsStreaming(false);

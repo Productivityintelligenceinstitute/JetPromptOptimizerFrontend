@@ -28,8 +28,8 @@ export default function PricingCallout() {
               {/* Value Box */}
               <div className="rounded-xl bg-white p-4 border border-[#ED6730]/30 shadow-sm ">
                 <p className="text-gray-700 text-lg sm:text-base">
-                  <span className="text-[#ED6730] font-semibold">Jet Prompt Optimizer</span> starts at{' '}
-                  <span className="text-[#ED6730] font-medium text-lg sm:text-xl">Free</span>
+                  <span className="text-[#ED6730] font-semibold">Jet Prompt Optimizer</span> starts with a{' '}
+                  <span className="text-[#ED6730] font-medium text-lg sm:text-xl">14-day free trial</span>
                 </p>
               </div>
             </div>

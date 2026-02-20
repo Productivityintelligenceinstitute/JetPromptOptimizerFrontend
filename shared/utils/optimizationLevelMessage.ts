@@ -70,14 +70,16 @@ export function getQueryLimitMessage(
   const normalizedPackage = packageName?.toLowerCase() || 'free';
   
   if (level === 'basic') {
-    if (normalizedPackage === 'free') return '5 queries per day';
+    if (normalizedPackage === 'trial' || normalizedPackage === 'free') return '5 queries per day';
     return 'Unlimited';
   }
   if (level === 'structured') {
+    if (normalizedPackage === 'trial') return '1 query per day';
     return 'Unlimited';
   }
   if (level === 'mastery') {
     if (normalizedPackage === 'pro') return '50 queries per day';
+    if (normalizedPackage === 'trial') return '5 total over trial';
     return 'Upgrade to Pro';
   }
   if (level === 'system') {

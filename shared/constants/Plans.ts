@@ -1,18 +1,19 @@
 export const plans = [
   {
-    name: 'Free',
-    price: '$0',
-    period: '/ Month',
-    badge: null,
-    description: 'Perfect for trying out Jet Prompt Optimizer.',
+    name: 'Trial',
+    price: '14-day',
+    period: ' free trial',
+    badge: 'New users',
+    description: 'Try Jet Prompt Optimizer with full access for 14 days.',
     features: [
-      '5 optimizations per day',
-      'Basic Fast Rewrite engine (simple clean-ups, no schema validation)',
+      '5 Basic optimizations per day',
+      '1 Structured optimization per day',
+      '5 Master-level optimizations (total over trial)',
+      'Basic Fast Rewrite engine',
       'Standard output formatting',
-      'Community support',
-      'No login required'
+      'Community support'
     ],
-    cta: 'Subscribe',
+    cta: 'Start Trial',
     featured: false,
     bgColor: 'bg-white',
     borderColor: 'border-gray-200',

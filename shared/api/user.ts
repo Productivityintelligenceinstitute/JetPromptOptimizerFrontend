@@ -12,6 +12,7 @@ export interface CreateAccountRequest {
 
 /**
  * Response payload from backend user endpoints
+ * Backend may return trial_ends_at or end_date (both mean trial end timestamp)
  */
 export interface UserData {
     user_id: string;
@@ -21,6 +22,8 @@ export interface UserData {
     firebase_uid: string;
     created_at: string | null;
     package_name: string;
+    trial_ends_at?: string | null;
+    end_date?: string | null;
 }
 
 export interface AdminUserListItem {
@@ -30,6 +33,14 @@ export interface AdminUserListItem {
     role: string;
     firebase_uid: string | null;
     created_at: string | null;
+    package_name?: string | null;
+    trial_ends_at?: string | null;
+    /** Current or last subscription end date (expiry / cancelled). */
+    expiry_date?: string | null;
+    last_activity_at?: string | null;
+    is_expired?: boolean;
+    /** Display: Trialing / Active / Past Due / Suspended / Canceled / Expired / No subscription */
+    subscription_status?: string | null;
 }
 
 export interface AdminUserListResponse {
@@ -79,13 +90,15 @@ export const getCurrentUser = async (): Promise<UserData> => {
             }
         );
 
-        console.log('getCurrentUser response', response);   
-        
-        if (!response.data?.user_id) {
+        const data = response.data;
+        if (!data?.user_id) {
             throw new ApiError('Invalid user data received from server');
         }
-        
-        return response.data;
+        // Normalize trial end: backend may return trial_ends_at or end_date
+        if (data.trial_ends_at != null || data.end_date != null) {
+            (data as UserData).trial_ends_at = data.trial_ends_at ?? data.end_date;
+        }
+        return data;
     } catch (error) {
         const normalizedError = normalizeError(error);
         logError(normalizedError, 'getCurrentUser');
@@ -108,6 +121,20 @@ export const updateUserRole = async (email: string, newRole: string): Promise<vo
     } catch (error) {
         const normalizedError = normalizeError(error);
         logError(normalizedError, "updateUserRole");
+        throw normalizedError;
+    }
+};
+
+/**
+ * Soft-deletes the current user's account.
+ * After success, user must sign out and redirect (backend rejects login/me for soft-deleted users).
+ */
+export const deleteAccount = async (userId: string): Promise<void> => {
+    try {
+        await apiClient.delete<void>(`/delete-account/${userId}`);
+    } catch (error) {
+        const normalizedError = normalizeError(error);
+        logError(normalizedError, 'deleteAccount');
         throw normalizedError;
     }
 };
