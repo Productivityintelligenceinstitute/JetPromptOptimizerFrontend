@@ -38,22 +38,23 @@ export default function Hero() {
         <div className="mx-auto max-w-3xl px-4 text-center">
           <div className="mt-6 space-y-3 sm:space-y-4">
             <h1 className="text-balance text-3xl font-semibold leading-tight text-jet-blue sm:text-4xl md:text-5xl">
-              Optimize Your AI Prompts
-              <span className="block text-signal-orange">with Precision</span>
+              Think Better. Faster.
+              <span className="block text-signal-orange">From Rough Idea to Executive-Ready Output in 60 Seconds.</span>
             </h1>
 
             <p className="mx-auto max-w-2xl text-base text-gray-700 sm:text-lg leading-relaxed">
-              Stop wasting time guessing which prompts work.
-              <br />
-              Jet Prompt Optimizer shows you what performs, helps your team improve it
-              together, and keeps results consistent as you scale AI across your workflows.
+              Jet Prompt Optimizer eliminates trial-and-error prompting so you can move with clarity and confidence.
             </p>
           </div>
 
           <p className="mt-6 text-center text-base text-gray-700 sm:text-lg leading-relaxed max-w-2xl mx-auto">
-            Jet is an AI enablement layer that improves output quality before prompts ever reach the model.
+            Instead of rewriting prompts for 30 minutes, you start with structure, depth, and precision. JPO standardizes thinking quality, aligns outputs with best practices, and ensures your AI workflows are consistent, scalable, and defensible.
+          </p>
+
+          <p className="mt-4 text-center text-base font-medium text-jet-blue sm:text-lg max-w-2xl mx-auto">
+            This isn&apos;t prompt tweaking.
             <br />
-            For a faster start, please watch the demo video and review the FAQ section below before getting started with your 14-day free trial!
+            It&apos;s operationalized intelligence.
           </p>
 
           <div className="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
