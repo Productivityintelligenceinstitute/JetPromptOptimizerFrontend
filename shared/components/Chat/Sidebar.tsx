@@ -302,7 +302,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                     </div>
 
                     {/* Bonuses Button (above user email section) */}
-                    {user && (user.role === 'admin' || ['essential', 'pro'].includes((user.package_name || '').toLowerCase())) && (
+                    {user && (user.role === 'admin' || ['trial', 'essential', 'pro'].includes((user.package_name || '').toLowerCase())) && (
                         <div className="border-t border-gray-800 px-4 pt-4 pb-1">
                             <a
                                 href="https://www.gokollab.com/jet-prompt-optimizer-7rtjng/private-group"
@@ -358,7 +358,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                     {user?.name || user?.email || 'User'}
                                 </p>
                                 <p className="text-xs text-gray-400 capitalize">
-                                    {user?.package_name || 'Free'} Plan
+                                    {user?.package_name ? user.package_name.charAt(0).toUpperCase() + user.package_name.slice(1) : 'No subscription'} Plan
                                 </p>
                             </div>
                                 <ChevronDown className={cn(
@@ -377,7 +377,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                             {user?.email}
                                         </p>
                                         <p className="text-xs text-gray-400 capitalize">
-                                            {user?.package_name || 'Free'} Plan
+                                            {user?.package_name ? user.package_name.charAt(0).toUpperCase() + user.package_name.slice(1) : 'No subscription'} Plan
                                         </p>
                                     </div>
                                     
@@ -435,7 +435,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
             {!isOpen && (
                 <div className="flex-1 flex flex-col items-center justify-end pb-4">
                     {/* Bonuses Button (above email section) */}
-                    {user && (user.role === 'admin' || ['essential', 'pro'].includes((user.package_name || '').toLowerCase())) && (
+                    {user && (user.role === 'admin' || ['trial', 'essential', 'pro'].includes((user.package_name || '').toLowerCase())) && (
                         <a
                             href="https://www.gokollab.com/jet-prompt-optimizer-7rtjng/private-group"
                             target="_blank"
@@ -474,7 +474,7 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                                         {user?.email}
                                     </p>
                                     <p className="text-xs text-gray-400 capitalize">
-                                        {user?.package_name || 'Free'} Plan
+                                        {user?.package_name ? user.package_name.charAt(0).toUpperCase() + user.package_name.slice(1) : 'No subscription'} Plan
                                     </p>
                                 </div>
                                 

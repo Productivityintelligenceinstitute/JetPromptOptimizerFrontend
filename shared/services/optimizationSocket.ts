@@ -651,13 +651,15 @@ export function createOptimizationSocket(options: OptimizationSocketOptions): We
   const socket = new WebSocket(wsUrl);
 
   socket.onopen = () => {
-    socket.send(
-      JSON.stringify({
-        user_prompt: options.userPrompt,
-        chat_id: options.chatId ?? null,
-        user_id: options.userId,
-      }),
-    );
+    // For new chat, omit chat_id (do not send null or "None" - backend expects field absent)
+    const payload: Record<string, unknown> = {
+      user_prompt: options.userPrompt,
+      user_id: options.userId,
+    };
+    if (options.chatId) {
+      payload.chat_id = options.chatId;
+    }
+    socket.send(JSON.stringify(payload));
   };
 
   socket.onmessage = async (event) => {

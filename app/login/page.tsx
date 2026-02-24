@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/shared/context/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { LogoIcon } from '@/shared/components/icons/user-icons';
 import GuestGuard from '@/shared/components/auth/GuestGuard';
@@ -17,18 +17,21 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, loginRejectedReason, clearLoginRejectedReason } = useAuth();
   const [loginSuccess, setLoginSuccess] = useState(false);
   const {
     register,
     handleSubmit,
     formState: { errors },
     setError,
+    clearErrors,
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
 
   const onSubmit = async (data: LoginForm) => {
+    clearLoginRejectedReason();
+    clearErrors('root');
     try {
       await login(data.email, data.password);
       // Mark login as successful - GuestGuard will handle redirect once user sync completes
@@ -38,6 +41,15 @@ export default function LoginPage() {
       setLoginSuccess(false);
     }
   };
+
+  // When backend rejected login (e.g. soft-deleted user), show message and clear the flag
+  useEffect(() => {
+    if (loginRejectedReason) {
+      setLoginSuccess(false);
+      setError('root', { message: loginRejectedReason });
+      clearLoginRejectedReason();
+    }
+  }, [loginRejectedReason, setError, clearLoginRejectedReason]);
 
   return (
     <GuestGuard>

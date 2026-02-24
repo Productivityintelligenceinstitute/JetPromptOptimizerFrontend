@@ -15,13 +15,16 @@ export function Navbar() {
   const [activeSection, setActiveSection] = useState<string>("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const prevPathnameRef = useRef<string | null>(null);
+  const [hasMounted, setHasMounted] = useState(false);
 
-  // Check if we're mounted (client-side)
-  const mounted = typeof window !== "undefined";
+  // Only show active link styling after mount so server and initial client render match (avoids hydration mismatch)
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   // Handle hash navigation and scroll detection
   useEffect(() => {
-    if (!mounted) return;
+    if (!hasMounted) return;
 
     // Reset active section when pathname changes away from home
     if (pathname !== "/" && prevPathnameRef.current === "/") {
@@ -165,10 +168,10 @@ export function Navbar() {
       window.removeEventListener("scroll", throttledHandleScroll);
       window.removeEventListener("hashchange", handleHashChange);
     };
-  }, [mounted, pathname]);
+  }, [hasMounted, pathname]);
 
   const isActive = (href: string) => {
-    if (!mounted || !pathname) return false;
+    if (!hasMounted || !pathname) return false;
 
     // For home page, check hash sections
     if (pathname === "/") {
