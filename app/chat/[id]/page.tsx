@@ -62,6 +62,7 @@ function ChatSessionContent() {
     console.log({user});
     const chatAreaRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
+    const skipNextLoadRef = useRef(false);
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamMessageId, setStreamMessageId] = useState<string | null>(null);
     
@@ -205,6 +206,11 @@ function ChatSessionContent() {
             if (!chatId || chatId === 'new' || chatId === 'undefined' || chatId === 'null') {
                 return;
             }
+
+            if (skipNextLoadRef.current) {
+            skipNextLoadRef.current = false;
+            return;
+        }
 
             try {
                 setIsLoadingMessages(true);
@@ -465,6 +471,7 @@ function ChatSessionContent() {
                     if (newChatId && newChatId !== 'undefined' && newChatId !== 'null') {
                         const isNewChat = !chatId;
                         if (isNewChat) {
+                            skipNextLoadRef.current = true;
                             // Update chatId state first
                             setChatId(newChatId);
                             
