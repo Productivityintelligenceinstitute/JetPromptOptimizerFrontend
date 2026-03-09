@@ -35,15 +35,16 @@ export default function Hero() {
   }, [isModalOpen]);
 
   const router = useRouter();
-const { user } = useAuth();
+  const { user } = useAuth();
 
-const handleStartTrial = () => {
-  if (user) {
-    router.push("/chat");
-  } else {
-    router.push("/login");
-  }
-};
+  const handleStartTrial = () => {
+    if (user) {
+      router.push("/chat");
+    } else {
+      // New users should go to signup / create account first
+      router.push("/signup");
+    }
+  };
 
   return (
     <>
