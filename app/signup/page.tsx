@@ -45,7 +45,7 @@ export default function SignupPage() {
   };
 
   return (
-    <GuestGuard>
+  <GuestGuard redirectTo="/signup/success">
     <main className="relative flex items-center justify-center min-h-screen bg-soft-white px-4">
       <div className="w-full max-w-md space-y-5">
         <div className="text-center">
