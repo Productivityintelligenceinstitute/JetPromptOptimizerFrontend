@@ -5,6 +5,7 @@ import LayoutWrapper from "@/shared/components/LayoutWrapper";
 import { AuthProvider } from "@/shared/context/AuthContext";
 import { ReduxProvider } from "@/shared/store/ReduxProvider";
 import QueryProvider from "@/shared/components/QueryProvider";
+import GoogleAdsTag from "@/shared/components/GoogleAdsTag";
 const inter = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -39,6 +40,7 @@ export default function RootLayout({
         suppressHydrationWarning={true}
         className={`${inter.variable} ${sourceSerif.variable} ${jetBrainsMono.variable} antialiased`}
       >
+        <GoogleAdsTag />
         <ReduxProvider>
           <QueryProvider>
             <AuthProvider>

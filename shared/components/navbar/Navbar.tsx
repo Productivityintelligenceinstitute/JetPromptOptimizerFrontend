@@ -61,7 +61,6 @@ export function Navbar() {
 
     // Handle scroll to update active section
     const handleScroll = () => {
-      const sections = ["features", "pricing"];
       const scrollPosition = window.scrollY;
       const navbarHeight = 50; // Reduced for tighter spacing
       const threshold = navbarHeight + 50; // Offset for navbar
@@ -69,13 +68,17 @@ export function Navbar() {
       // If scrolled to top, set home as active
       if (scrollPosition < threshold) {
         setActiveSection("");
-        if (window.location.hash) {
+        // Only strip hash for sections we auto-sync from scroll — never strip #faq
+        // (otherwise landing on /#faq gets cleared before we scroll to FAQ)
+        const h = window.location.hash.slice(1);
+        if (h === "features" || h === "pricing") {
           window.history.replaceState(null, "", pathname);
         }
         return;
       }
 
-      // Check sections from bottom to top
+      // Check sections from bottom to top (DOM order: features → … → pricing → … → faq)
+      const sections = ["features", "pricing", "faq"];
       for (let i = sections.length - 1; i >= 0; i--) {
         const section = document.getElementById(sections[i]);
         if (section) {
@@ -107,12 +110,11 @@ export function Navbar() {
         setTimeout(() => {
           const section = document.getElementById(hash);
           if (section) {
-            // Use smaller offset for features, standard for pricing
-            const offset = hash === 'features' ? 40 : 50;
+            const offset = hash === "features" ? 40 : 50;
             const sectionTop = section.offsetTop;
             window.scrollTo({
               top: sectionTop - offset,
-              behavior: 'smooth'
+              behavior: "smooth",
             });
           }
         }, 100);
@@ -159,9 +161,9 @@ export function Navbar() {
     window.addEventListener("scroll", throttledHandleScroll, { passive: true });
     window.addEventListener("hashchange", handleHashChange);
 
-    // Initial check
-    handleScroll();
+    // Scroll to hash first so /#faq isn’t wiped by handleScroll while still at top
     handleInitialHash();
+    handleScroll();
 
     return () => {
       clearTimeout(timeoutId);

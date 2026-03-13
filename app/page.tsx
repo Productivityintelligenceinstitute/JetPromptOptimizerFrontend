@@ -11,23 +11,9 @@ import PricingCallout from "@/shared/components/Homepage/PricingCallout";
 import Design from "@/shared/components/Homepage/Design";
 import BonusSection from "@/shared/components/Homepage/BonusSection";
 import FAQ from "@/shared/components/Homepage/FAQ";
-import Script from "next/script";
 export default function HomePage() {
   return (
     <>
-      {/* Google tag (gtag.js) for home page */}
-      <Script
-        src="https://www.googletagmanager.com/gtag/js?id=AW-17996021173"
-        strategy="afterInteractive"
-      />
-      <Script id="gtag-init" strategy="afterInteractive">
-        {`
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', 'AW-17996021173');
-        `}
-      </Script>
       <main>
         <Hero />
         <Features />
