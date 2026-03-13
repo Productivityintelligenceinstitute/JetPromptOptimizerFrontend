@@ -5,6 +5,7 @@ export interface CreateCheckoutSessionRequest {
   priceId: string;
   successUrl?: string;
   cancelUrl?: string;
+  discountCode?: string;
 }
 
 export interface CreateCheckoutSessionResponse {
