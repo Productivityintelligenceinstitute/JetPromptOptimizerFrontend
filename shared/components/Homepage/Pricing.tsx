@@ -12,8 +12,6 @@ export default function Pricing() {
   const { user } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
-  const [discountCode, setDiscountCode] = useState<string>('');
-  const [discountError, setDiscountError] = useState<string | null>(null);
 
   const handlePlanClick = async (planName: string) => {
     // Handle Premium/Enterprise plan - check authentication first
@@ -63,17 +61,13 @@ export default function Pricing() {
     }
 
     setLoading(planName);
-    setDiscountError(null);
 
     try {
-      const trimmedCode = discountCode.trim();
-
       const { url } = await createCheckoutSession({
         planName,
         priceId,
         successUrl: `${window.location.origin}/chat?success=true`,
         cancelUrl: `${window.location.origin}${APP_ROUTES.home}`,
-        ...(trimmedCode ? { discountCode: trimmedCode } : {}),
       });
 
       // Redirect to Stripe Checkout
@@ -137,31 +131,6 @@ export default function Pricing() {
           <p className="text-sm sm:text-base lg:text-[14px] text-gray-900 max-w-4xl mx-auto px-4 leading-relaxed">
             Start with essential features that sharpen your prompts instantly. Step up to the Pro Plan to unlock
             deeper AI optimization, enhanced structure, and precision-crafted system prompts.
-          </p>
-        </div>
-
-        {/* Optional Pilot / Discount Code */}
-        <div className="max-w-md mx-auto mb-8">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Pilot code (optional)
-          </label>
-          <input
-            type="text"
-            value={discountCode}
-            onChange={(e) => {
-              setDiscountCode(e.target.value);
-              if (discountError) setDiscountError(null);
-            }}
-            placeholder="Enter pilot or discount code"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-          {discountError && (
-            <p className="mt-1 text-xs text-red-600">
-              {discountError}
-            </p>
-          )}
-          <p className="mt-1 text-xs text-gray-500">
-            If you received a pilot access code, enter it here before choosing a plan.
           </p>
         </div>
 
