@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { useAuth } from '@/shared/context/AuthContext';
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { LogoIcon } from '@/shared/components/icons/user-icons';
 import GuestGuard from '@/shared/components/auth/GuestGuard';
 

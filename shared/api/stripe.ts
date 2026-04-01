@@ -6,6 +6,7 @@ export interface CreateCheckoutSessionRequest {
   successUrl?: string;
   cancelUrl?: string;
   discountCode?: string;
+  affiliateCode?: string;
 }
 
 export interface CreateCheckoutSessionResponse {
@@ -20,12 +21,22 @@ export const createCheckoutSession = async (
   data: CreateCheckoutSessionRequest
 ): Promise<CreateCheckoutSessionResponse> => {
   try {
+    console.info('[AFFILIATE_DEBUG] API /stripe/create-checkout-session request', {
+      planName: data.planName,
+      priceId: data.priceId,
+      affiliateCode: data.affiliateCode || null,
+    });
     const response = await apiClient.post<CreateCheckoutSessionResponse>(
       '/stripe/create-checkout-session',
       data
     );
+    console.info('[AFFILIATE_DEBUG] API /stripe/create-checkout-session response', {
+      sessionId: response.data?.sessionId,
+      hasUrl: Boolean(response.data?.url),
+    });
     return response.data;
   } catch (error) {
+    console.error('[AFFILIATE_DEBUG] API /stripe/create-checkout-session error', error);
     throw error;
   }
 };
