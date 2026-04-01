@@ -72,7 +72,8 @@ export function Navbar() {
         // (otherwise landing on /#faq gets cleared before we scroll to FAQ)
         const h = window.location.hash.slice(1);
         if (h === "features" || h === "pricing") {
-          window.history.replaceState(null, "", pathname);
+          const search = window.location.search || "";
+          window.history.replaceState(null, "", `${pathname}${search}`);
         }
         return;
       }
@@ -92,7 +93,8 @@ export function Navbar() {
               setActiveSection(sections[i]);
               // Update URL hash without scrolling
               if (window.location.hash !== `#${sections[i]}`) {
-                window.history.replaceState(null, "", `#${sections[i]}`);
+                const search = window.location.search || "";
+                window.history.replaceState(null, "", `${pathname}${search}#${sections[i]}`);
               }
               return;
             }
@@ -270,7 +272,8 @@ export function Navbar() {
                           behavior: 'smooth'
                         });
                         // Update URL hash
-                        window.history.pushState(null, "", item.href);
+                        const search = window.location.search || "";
+                        window.history.pushState(null, "", `${pathname}${search}#${hash}`);
                         setActiveSection(hash);
                       }
                     }, 100);
@@ -392,7 +395,8 @@ export function Navbar() {
                               behavior: 'smooth'
                             });
                             // Update URL hash
-                            window.history.pushState(null, "", item.href);
+                            const search = window.location.search || "";
+                            window.history.pushState(null, "", `${pathname}${search}#${hash}`);
                             setActiveSection(hash);
                           }
                         }, 100);

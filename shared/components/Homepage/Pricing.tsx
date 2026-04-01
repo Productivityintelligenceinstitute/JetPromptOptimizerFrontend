@@ -1,17 +1,42 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CircleIcon } from '@/shared/constants/callouticont';
 import { plans } from '@/shared/constants/Plans';
 import { useAuth } from '@/shared/context/AuthContext';
 import { APP_ROUTES } from '@/config/navigation';
 import { createCheckoutSession, PLAN_TO_PRICE_ID } from '@/shared/api/stripe';
+import { getAffiliateCodeClient } from '@/shared/lib/affiliate';
 
 export default function Pricing() {
   const { user } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
+  const getAffiliateCode = (): string | undefined => {
+    return getAffiliateCodeClient(new URLSearchParams(window.location.search).get('aff')) || undefined;
+  };
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const fromUrl = searchParams.get('aff');
+    if (fromUrl) {
+      console.info('[AFFILIATE_DEBUG] Pricing mounted with aff already in URL', { fromUrl });
+      return;
+    }
+    const aff = getAffiliateCodeClient(null);
+    if (!aff) {
+      console.info('[AFFILIATE_DEBUG] Pricing mounted without affiliate in session');
+      return;
+    }
+    searchParams.set('aff', aff);
+    const hash = window.location.hash || '';
+    window.history.replaceState(null, '', `${window.location.pathname}?${searchParams.toString()}${hash}`);
+    console.info('[AFFILIATE_DEBUG] Pricing restored aff in URL', {
+      restoredAff: aff,
+      newUrl: `${window.location.pathname}?${searchParams.toString()}${hash}`,
+    });
+  }, []);
 
   const handlePlanClick = async (planName: string) => {
     // Handle Premium/Enterprise plan - check authentication first
@@ -63,11 +88,18 @@ export default function Pricing() {
     setLoading(planName);
 
     try {
+      const affiliateCode = getAffiliateCode();
+      console.info('[AFFILIATE_DEBUG] createCheckoutSession payload', {
+        planName,
+        priceId,
+        affiliateCode: affiliateCode || null,
+      });
       const { url } = await createCheckoutSession({
         planName,
         priceId,
         successUrl: `${window.location.origin}/chat?success=true`,
         cancelUrl: `${window.location.origin}${APP_ROUTES.home}`,
+        affiliateCode,
       });
 
       // Redirect to Stripe Checkout
