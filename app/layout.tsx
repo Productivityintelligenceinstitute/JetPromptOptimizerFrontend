@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Inter, Source_Serif_4, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/shared/components/LayoutWrapper";
@@ -42,7 +43,9 @@ export default function RootLayout({
         className={`${inter.variable} ${sourceSerif.variable} ${jetBrainsMono.variable} antialiased`}
       >
         <GoogleAdsTag />
-        <AffiliateTracker />
+        <Suspense fallback={null}>
+          <AffiliateTracker />
+        </Suspense>
         <ReduxProvider>
           <QueryProvider>
             <AuthProvider>
