@@ -31,6 +31,7 @@ export function AdminNavbar() {
     { href: "/admin/packages", label: "Packages" },
     { href: "/admin/users", label: "Users" },
     { href: "/admin/library", label: "Library" },
+    { href: "/admin/affiliate-report", label: "Affiliate report" },
   ];
 
   return (
