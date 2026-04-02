@@ -33,6 +33,13 @@ export default function AdminPage() {
             description: "Review and manage prompts shared by users.",
             badge: "Prompt Library",
         },
+        {
+            href: "/admin/affiliate-report",
+            title: "Affiliate link report",
+            description:
+                "View subscriptions and paid revenue attributed to affiliate codes from Stripe.",
+            badge: "Partners",
+        },
     ];
 
     return (
