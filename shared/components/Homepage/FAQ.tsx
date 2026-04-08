@@ -138,7 +138,7 @@ const faqData: FAQItem[] = [
       <>
         <ul className="list-disc list-inside mt-2 space-y-1">
           <li><strong>Trial (14 days)</strong> - Try it, learn the flow →</li>
-          <li><strong>Essential ($34.95)</strong> - Daily use, writing, marketing, strategy, research →</li>
+          <li><strong>Essential ($19.95)</strong> - Daily use, writing, marketing, strategy, research →</li>
           <li><strong>Pro ($74.95)</strong> - Client work, automation, research-heavy or structured outputs →</li>
           <li><strong>Enterprise</strong> - Teams, governance, analytics, compliance →</li>
         </ul>
