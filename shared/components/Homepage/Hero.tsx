@@ -48,40 +48,37 @@ export default function Hero() {
 
   return (
     <>
-      <section className="flex items-center justify-center mt-14 bg-white py-20 sm:py-10">
+      <section className="relative mt-14 overflow-hidden bg-gradient-to-b from-[#F7FAFF] via-white to-white py-20 sm:py-12">
+        <div className="pointer-events-none absolute -top-28 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-signal-orange/10 blur-3xl" />
         <div className="mx-auto max-w-3xl px-4 text-center">
-          <div className="mt-6 space-y-3 sm:space-y-4">
-            <h1 className="text-balance text-3xl font-semibold leading-tight text-jet-blue sm:text-4xl md:text-5xl">
-              Think Better. Faster.
-              <span className="block text-signal-orange">From Rough Idea to Executive-Ready Output in 60 Seconds.</span>
+          <div className="mt-4 space-y-4 sm:space-y-5">
+            <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-jet-blue sm:text-5xl md:text-6xl">
+              Stop rewriting
+              <span className="block text-signal-orange">AI prompts.</span>
             </h1>
 
-            <p className="mx-auto max-w-2xl text-base text-gray-700 sm:text-lg leading-relaxed">
-              Jet Prompt Optimizer eliminates trial-and-error prompting so you can move with clarity and confidence.
+            <p className="mx-auto max-w-2xl text-lg text-gray-700 sm:text-xl leading-relaxed">
+              Most teams expected AI to speed things up...
+              <br />
+              Instead, they&apos;re rewriting outputs every time.
             </p>
           </div>
 
-          <p className="mt-6 text-center text-base text-gray-700 sm:text-lg leading-relaxed max-w-2xl mx-auto">
-            Instead of rewriting prompts for 30 minutes, you start with structure, depth, and precision. JPO standardizes thinking quality, aligns outputs with best practices, and ensures your AI workflows are consistent, scalable, and defensible.
-          </p>
-
-          <p className="mt-4 text-center text-base font-medium text-jet-blue sm:text-lg max-w-2xl mx-auto">
-            This isn&apos;t prompt tweaking.
-            <br />
-            It&apos;s operationalized intelligence.
+          <p className="mx-auto mt-6 max-w-xl text-center text-base font-semibold text-jet-blue sm:text-lg">
+            It&apos;s not an AI problem — it&apos;s a repeatability problem.
           </p>
 
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           </div>
-          <div className="mt-8 flex flex-col items-center gap-2">
+          <div className="mt-8 flex flex-col items-center gap-3">
             <button
               type="button"
               onClick={handleStartTrial}
-              className="cursor-pointer inline-flex items-center justify-center rounded-md bg-jet-blue px-10 py-4 text-base font-bold text-white shadow-sm transition hover:bg-jet-blue/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2"
+              className="cursor-pointer inline-flex items-center justify-center rounded-lg bg-jet-blue px-10 py-4 text-base font-bold text-white shadow-md shadow-jet-blue/20 transition hover:-translate-y-0.5 hover:bg-jet-blue/95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jet-blue focus-visible:ring-offset-2"
             >
-              Start 14-Day Free Trial
+              Paste your prompt &rarr;
             </button>
-            <p className="text-sm text-gray-500">Full Access. No credit Card Required</p>
+            <p className="text-sm font-medium text-gray-500">Full Access. No credit Card Required</p>
           </div>
         </div>
       </section>
