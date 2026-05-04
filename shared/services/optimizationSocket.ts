@@ -169,8 +169,8 @@ export function formatOptimizationResponse(parsed: any, level: OptimizationLevel
     return formatSystemLevelResponse(parsed);
   }
 
-  // Master Level - use existing formatMasterLevelResponse logic
-  if (level === 'mastery') {
+  // Master Level - use existing formatMasterLevelResponse logic (DB uses message_type "master")
+  if (level === 'mastery' || (level as string) === 'master') {
     // formatMasterLevelResponse can handle both string and object
     // Pass the parsed object directly so it can detect the new structure (overview, deconstruct, etc.)
     return formatMasterLevelResponse(parsed);
