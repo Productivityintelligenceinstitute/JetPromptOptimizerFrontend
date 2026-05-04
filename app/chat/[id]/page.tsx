@@ -19,6 +19,23 @@ import DeleteChatModal from '@/shared/components/Modal/DeleteChatModal';
 import Notification from '@/shared/components/Notification/Notification';
 import { createOptimizationSocket, OptimizationLevelKey, formatOptimizationResponse } from '@/shared/services/optimizationSocket';
 
+/** Backend stores mastery assistant rows as message_type "master"; UI level key is "mastery". */
+function messageTypeToOptimizationLevel(
+    messageType: string | undefined | null
+): OptimizationLevelKey | null {
+    if (!messageType) return null;
+    if (messageType === 'master') return 'mastery';
+    if (
+        messageType === 'basic' ||
+        messageType === 'structured' ||
+        messageType === 'system' ||
+        messageType === 'mastery'
+    ) {
+        return messageType;
+    }
+    return null;
+}
+
 function ChatSessionContent() {
     const params = useParams();
     const searchParams = useSearchParams();
@@ -222,8 +239,9 @@ function ChatSessionContent() {
                 const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
                 if (firstAssistant) {
                     // Use message_type if available (preferred method)
-                    if (firstAssistant?.message_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.message_type)) {
-                        detectedLevel = firstAssistant.message_type as OptimizationLevelKey;
+                    const levelFromMessageType = messageTypeToOptimizationLevel(firstAssistant.message_type);
+                    if (levelFromMessageType) {
+                        detectedLevel = levelFromMessageType;
                     } else if (firstAssistant.content) {
                         // Fallback to content-based detection
                         try {
@@ -269,9 +287,9 @@ function ChatSessionContent() {
                                 // Use message_type from message if available, otherwise auto-detect
                                 let actualLevel: OptimizationLevelKey = levelKey;
                                 
-                                if (msg.message_type && ['basic', 'structured', 'system', 'master'].includes(msg.message_type)) {
-                                    // Use message_type from backend response
-                                    actualLevel = msg.message_type as OptimizationLevelKey;
+                                const normalizedType = messageTypeToOptimizationLevel(msg.message_type);
+                                if (normalizedType) {
+                                    actualLevel = normalizedType;
                                 } else {
                                     // Fallback to auto-detection for backward compatibility
                                     if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
@@ -298,8 +316,9 @@ function ChatSessionContent() {
                         } else if (msg.role === 'assistant') {
                             // Already an object, use message_type if available
                             let actualLevel: OptimizationLevelKey = levelKey;
-                            if (msg.message_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.message_type)) {
-                                actualLevel = msg.message_type as OptimizationLevelKey;
+                            const normalizedAssistantType = messageTypeToOptimizationLevel(msg.message_type);
+                            if (normalizedAssistantType) {
+                                actualLevel = normalizedAssistantType;
                             }
                             
                             if (actualLevel === 'mastery') {
@@ -331,8 +350,9 @@ function ChatSessionContent() {
                     const firstAssistant = response.items.find((msg: any) => msg.role === 'assistant');
                     if (firstAssistant) {
                         // Prefer message_type if available
-                        if (firstAssistant.message_type && ['basic', 'structured', 'system', 'mastery'].includes(firstAssistant.message_type)) {
-                            const levelFromType = OPTIMIZATION_LEVELS[firstAssistant.message_type as OptimizationLevel];
+                        const chatLevelKey = messageTypeToOptimizationLevel(firstAssistant.message_type);
+                        if (chatLevelKey) {
+                            const levelFromType = OPTIMIZATION_LEVELS[chatLevelKey as OptimizationLevel];
                             if (levelFromType) {
                                 setChatLevel(levelFromType);
                             }
@@ -522,9 +542,9 @@ function ChatSessionContent() {
                                             // Use message_type from message if available, otherwise auto-detect
                                             let actualLevel: OptimizationLevelKey = levelKey;
                                             
-                                            if (msg.message_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.message_type)) {
-                                                // Use message_type from backend response
-                                                actualLevel = msg.message_type as OptimizationLevelKey;
+                                            const normalizedWsType = messageTypeToOptimizationLevel(msg.message_type);
+                                            if (normalizedWsType) {
+                                                actualLevel = normalizedWsType;
                                             } else {
                                                 // Fallback to auto-detection for backward compatibility
                                                 if (parsed.overview || parsed.deconstruct || parsed.diagnose || parsed.develop || parsed.deliver) {
@@ -551,8 +571,9 @@ function ChatSessionContent() {
                                     } else if (msg.role === 'assistant') {
                                         // Already an object, use message_type if available
                                         let actualLevel: OptimizationLevelKey = levelKey;
-                                        if (msg.message_type && ['basic', 'structured', 'system', 'mastery'].includes(msg.message_type)) {
-                                            actualLevel = msg.message_type as OptimizationLevelKey;
+                                        const normalizedWsObjectType = messageTypeToOptimizationLevel(msg.message_type);
+                                        if (normalizedWsObjectType) {
+                                            actualLevel = normalizedWsObjectType;
                                         } else {
                                             // Fallback to auto-detection
                                             if (content.overview || content.deconstruct || content.diagnose || content.develop || content.deliver) {
