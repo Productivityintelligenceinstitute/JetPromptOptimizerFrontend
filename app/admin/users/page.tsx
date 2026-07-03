@@ -5,8 +5,18 @@ import { useSearchParams, useRouter } from "next/navigation";
 
 import AdminGuard from "@/shared/components/auth/AdminGuard";
 import { AdminNavbar } from "@/shared/components/navbar/AdminNavbar";
+import Notification from "@/shared/components/Notification/Notification";
+import ExtendTrialModal from "@/shared/components/admin/ExtendTrialModal";
+import ChangeLogsModal from "@/shared/components/admin/ChangeLogsModal";
 import { useAuth } from "@/shared/context/AuthContext";
-import { getAdminUsers, AdminUserListItem, updateUserRole } from "@/shared/api/user";
+import {
+  getAdminUsers,
+  AdminUserListItem,
+  updateUserRole,
+  extendTrial,
+  getUserChangeLogs,
+  UserChangeLogItem,
+} from "@/shared/api/user";
 
 function AdminUsersContent() {
   const { user } = useAuth();
@@ -26,11 +36,24 @@ function AdminUsersContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [roleUpdatingEmail, setRoleUpdatingEmail] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+  const [extendTrialUser, setExtendTrialUser] = useState<AdminUserListItem | null>(null);
+  const [extendTrialDays, setExtendTrialDays] = useState(7);
+  const [extendTrialError, setExtendTrialError] = useState<string | null>(null);
+  const [isExtendingTrial, setIsExtendingTrial] = useState(false);
+  const [changeLogsUser, setChangeLogsUser] = useState<AdminUserListItem | null>(null);
+  const [changeLogs, setChangeLogs] = useState<UserChangeLogItem[]>([]);
+  const [changeLogsLoading, setChangeLogsLoading] = useState(false);
+  const [changeLogsError, setChangeLogsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
       fetchUsers(currentPage, itemsPerPage, search);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, currentPage, itemsPerPage, search]);
 
   const fetchUsers = async (page: number, size: number, query: string) => {
@@ -47,6 +70,121 @@ function AdminUsersContent() {
       setIsLoading(false);
     }
   };
+
+  const getStatusCode = (err: any): number | undefined =>
+    err?.statusCode ?? err?.response?.status;
+
+  const getErrorMessage = (err: any): string =>
+    err?.message || err?.response?.data?.detail || "An unexpected error occurred.";
+
+  const getExtendTrialErrorMessage = (err: any): string => {
+    const statusCode = getStatusCode(err);
+    const message = getErrorMessage(err);
+
+    if (statusCode === 404) {
+      if (message === "Trial user not found") {
+        return message;
+      }
+      return "Not authorized or trial user not found.";
+    }
+
+    if (statusCode === 400) {
+      return message;
+    }
+
+    if (statusCode === 422) {
+      return "Please enter a valid number of days.";
+    }
+
+    return message || "Failed to extend trial.";
+  };
+
+  const getChangeLogsErrorMessage = (err: any): string => {
+    const statusCode = getStatusCode(err);
+    if (statusCode === 404) {
+      return "Not authorized or user not found.";
+    }
+    return getErrorMessage(err) || "Failed to load change history.";
+  };
+
+  const closeExtendTrialModal = () => {
+    setExtendTrialUser(null);
+    setExtendTrialDays(7);
+    setExtendTrialError(null);
+    setIsExtendingTrial(false);
+  };
+
+  const closeChangeLogsModal = () => {
+    setChangeLogsUser(null);
+    setChangeLogs([]);
+    setChangeLogsLoading(false);
+    setChangeLogsError(null);
+  };
+
+  const handleOpenExtendTrial = (u: AdminUserListItem) => {
+    setExtendTrialUser(u);
+    setExtendTrialDays(7);
+    setExtendTrialError(null);
+  };
+
+  const handleExtendTrialSubmit = async () => {
+    if (!user || !extendTrialUser) return;
+
+    try {
+      setIsExtendingTrial(true);
+      setExtendTrialError(null);
+      const result = await extendTrial(user.user_id, extendTrialUser.email, extendTrialDays);
+      setNotification({
+        message: `Extended trial for ${result.user_email} by ${result.days_added} day(s).`,
+        type: "success",
+      });
+      closeExtendTrialModal();
+      await fetchUsers(currentPage, itemsPerPage, search);
+    } catch (err: any) {
+      setExtendTrialError(getExtendTrialErrorMessage(err));
+    } finally {
+      setIsExtendingTrial(false);
+    }
+  };
+
+  const handleOpenChangeLogs = (u: AdminUserListItem) => {
+    setChangeLogsUser(u);
+    setChangeLogs([]);
+    setChangeLogsError(null);
+    setChangeLogsLoading(true);
+  };
+
+  useEffect(() => {
+    if (!user || !changeLogsUser) return;
+
+    let isMounted = true;
+
+    const loadChangeLogs = async () => {
+      try {
+        setChangeLogsLoading(true);
+        setChangeLogsError(null);
+        const data = await getUserChangeLogs(user.user_id, changeLogsUser.user_id);
+        if (isMounted) {
+          setChangeLogs(data.items);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setChangeLogsError(getChangeLogsErrorMessage(err));
+          setChangeLogs([]);
+        }
+      } finally {
+        if (isMounted) {
+          setChangeLogsLoading(false);
+        }
+      }
+    };
+
+    loadChangeLogs();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [changeLogsUser, user]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -91,7 +229,6 @@ function AdminUsersContent() {
     try {
       setRoleUpdatingEmail(email);
       await updateUserRole(email, newRole);
-      // Optionally refetch to ensure consistency
       await fetchUsers(currentPage, itemsPerPage, search);
     } catch (err: any) {
       setError(err.message || "Failed to update user role.");
@@ -134,7 +271,7 @@ function AdminUsersContent() {
                 Manage Users
               </h1>
               <p className="text-gray-600">
-                View all users, update roles, and inspect account details.
+                View all users, update roles, extend trials, and inspect account details.
               </p>
             </div>
             <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
@@ -159,6 +296,14 @@ function AdminUsersContent() {
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-600">{error}</p>
           </div>
+        )}
+
+        {notification && (
+          <Notification
+            message={notification.message}
+            type={notification.type}
+            onClose={() => setNotification(null)}
+          />
         )}
 
         {isLoading ? (
@@ -202,6 +347,9 @@ function AdminUsersContent() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Firebase UID
                     </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Trial Tools
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -211,25 +359,25 @@ function AdminUsersContent() {
                       <tr key={u.user_id}>
                         <td className="px-4 py-3 text-sm text-gray-900">{u.email}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">
-                          {u.full_name || "—"}
+                          {u.full_name || "-"}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {formatPackageLevel(u.package_name)}
                         </td>
                         <td className="px-4 py-3">
                           <span className={subscriptionStatusClass(u.subscription_status)}>
-                            {u.subscription_status || "—"}
+                            {u.subscription_status || "-"}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-500">
                           {u.created_at
                             ? new Date(u.created_at).toLocaleDateString()
-                            : "—"}
+                            : "-"}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-500">
                           {u.expiry_date
                             ? new Date(u.expiry_date).toLocaleDateString()
-                            : "—"}
+                            : "-"}
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <div className="flex items-center gap-2">
@@ -245,6 +393,7 @@ function AdminUsersContent() {
                               <option value="admin">admin</option>
                             </select>
                             <button
+                              type="button"
                               onClick={() => !isSelf && handleRoleSave(u.email, u.role)}
                               disabled={!!isSelf || roleUpdatingEmail === u.email}
                               className="px-2 py-1 text-xs rounded-md border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
@@ -258,7 +407,25 @@ function AdminUsersContent() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">
-                          {u.firebase_uid || "—"}
+                          {u.firebase_uid || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenExtendTrial(u)}
+                              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+                            >
+                              Extend trial
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenChangeLogs(u)}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                            >
+                              Change history
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -296,6 +463,7 @@ function AdminUsersContent() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                     className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
@@ -307,6 +475,7 @@ function AdminUsersContent() {
                     <span className="font-semibold">{totalPages}</span>
                   </span>
                   <button
+                    type="button"
                     onClick={() =>
                       currentPage < totalPages && handlePageChange(currentPage + 1)
                     }
@@ -321,6 +490,24 @@ function AdminUsersContent() {
           </>
         )}
       </main>
+      <ExtendTrialModal
+        isOpen={!!extendTrialUser}
+        userEmail={extendTrialUser?.email || null}
+        days={extendTrialDays}
+        isSubmitting={isExtendingTrial}
+        error={extendTrialError}
+        onDaysChange={setExtendTrialDays}
+        onSubmit={handleExtendTrialSubmit}
+        onClose={closeExtendTrialModal}
+      />
+      <ChangeLogsModal
+        isOpen={!!changeLogsUser}
+        userLabel={changeLogsUser?.email || null}
+        items={changeLogs}
+        isLoading={changeLogsLoading}
+        error={changeLogsError}
+        onClose={closeChangeLogsModal}
+      />
     </div>
   );
 }
@@ -328,23 +515,23 @@ function AdminUsersContent() {
 export default function AdminUsersPage() {
   return (
     <AdminGuard>
-      <Suspense fallback={
-        <div className="min-h-screen bg-gray-50">
-          <AdminNavbar />
-          <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent" />
-                <p className="mt-4 text-sm text-gray-600">Loading...</p>
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-gray-50">
+            <AdminNavbar />
+            <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 pt-28">
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-jet-blue border-r-transparent" />
+                  <p className="mt-4 text-sm text-gray-600">Loading...</p>
+                </div>
               </div>
-            </div>
-          </main>
-        </div>
-      }>
+            </main>
+          </div>
+        }
+      >
         <AdminUsersContent />
       </Suspense>
     </AdminGuard>
   );
 }
-
-
