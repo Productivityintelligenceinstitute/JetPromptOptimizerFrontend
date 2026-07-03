@@ -30,6 +30,12 @@ export interface AdminUserListItem {
     role: string;
     firebase_uid: string | null;
     created_at: string | null;
+    package_name?: string | null;
+    subscription_status?: string | null;
+    expiry_date?: string | null;
+    trial_ends_at?: string | null;
+    last_activity_at?: string | null;
+    is_expired?: boolean;
 }
 
 export interface AdminUserListResponse {
