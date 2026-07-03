@@ -14,6 +14,7 @@ export interface Permission {
     created_at?: string;
 }
 
+
 export interface PackagePermission {
     id?: number;
     package_id: number;
