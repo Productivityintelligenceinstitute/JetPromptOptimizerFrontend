@@ -24,7 +24,7 @@ export default function AdminPage() {
         {
             href: "/admin/users",
             title: "Manage Users & Roles",
-            description: "View users, update roles, and see who has access to what.",
+            description: "View users, update roles, extend trials, and review account history.",
             badge: "User Management",
         },
         {
