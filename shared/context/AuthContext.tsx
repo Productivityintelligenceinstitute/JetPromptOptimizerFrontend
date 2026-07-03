@@ -96,7 +96,7 @@ const saveUserToStorage = (user: User | null): void => {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => loadUserFromStorage());
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [loginRejectedReason, setLoginRejectedReason] = useState<string | null>(null);
@@ -104,6 +104,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Use ref to track current sync operation and prevent race conditions
   const syncInProgressRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+
+  // Load persisted user state after the initial render so SSR and client markup match.
+  useEffect(() => {
+    const storedUser = loadUserFromStorage();
+    if (storedUser) {
+      setUser(storedUser);
+    }
+  }, []);
 
   const clearLoginRejectedReason = useCallback(() => {
     setLoginRejectedReason(null);

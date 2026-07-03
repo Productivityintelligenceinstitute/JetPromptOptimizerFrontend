@@ -51,6 +51,32 @@ export interface AdminUserListResponse {
     pages: number;
 }
 
+export interface ExtendTrialResponse {
+    status: string;
+    user_email: string;
+    days_added: number;
+    previous_end_date: string | null;
+    new_end_date: string;
+    subscription_status: string;
+}
+
+export interface UserChangeLogItem {
+    id: string;
+    action: "trial_extended" | "subscription_expired" | string;
+    performed_by: string | null;
+    old_status: string | null;
+    new_status: string | null;
+    old_end_date: string | null;
+    new_end_date: string | null;
+    note: string | null;
+    created_at: string;
+}
+
+export interface UserChangeLogsResponse {
+    user_id: string;
+    items: UserChangeLogItem[];
+}
+
 /**
  * Creates or updates user account in backend
  * Idempotent operation - safe to call multiple times
@@ -165,6 +191,67 @@ export const getAdminUsers = async (
     } catch (error) {
         const normalizedError = normalizeError(error);
         logError(normalizedError, "getAdminUsers");
+        throw normalizedError;
+    }
+};
+
+export const extendTrial = async (
+    adminUserId: string,
+    userEmail: string,
+    days: number
+): Promise<ExtendTrialResponse> => {
+    try {
+        const response = await withRetry(
+            () =>
+                apiClient.put<ExtendTrialResponse>(
+                    "/admin/extend-trial",
+                    {
+                        user_email: userEmail,
+                        days,
+                    },
+                    {
+                        params: {
+                            user_id: adminUserId,
+                        },
+                    }
+                ),
+            {
+                shouldRetry: isRetryableError,
+            }
+        );
+
+        return response.data;
+    } catch (error) {
+        const normalizedError = normalizeError(error);
+        logError(normalizedError, "extendTrial");
+        throw normalizedError;
+    }
+};
+
+export const getUserChangeLogs = async (
+    adminUserId: string,
+    targetUserId: string
+): Promise<UserChangeLogsResponse> => {
+    try {
+        const response = await withRetry(
+            () =>
+                apiClient.get<UserChangeLogsResponse>(
+                    `/admin/users/${targetUserId}/change-logs`,
+                    {
+                        params: {
+                            admin_user_id: adminUserId,
+                        },
+                    }
+                ),
+            {
+                shouldRetry: isRetryableError,
+            }
+        );
+
+        return response.data;
+    } catch (error) {
+        const normalizedError = normalizeError(error);
+        logError(normalizedError, "getUserChangeLogs");
         throw normalizedError;
     }
 };
