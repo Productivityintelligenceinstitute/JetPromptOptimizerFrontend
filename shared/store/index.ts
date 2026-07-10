@@ -1,9 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 import userReducer from './userSlice';
+import contextJobsEntitlementsReducer from './contextJobsEntitlementsSlice';
 
 export const store = configureStore({
   reducer: {
     user: userReducer,
+    contextJobsEntitlements: contextJobsEntitlementsReducer,
   },
 });
 

@@ -17,8 +17,11 @@ import { auth } from '@/shared/lib/firebase';
 import { syncUserWithBackend, SyncedUser } from '@/shared/services/userSyncService';
 import { createAccount } from '@/shared/api/user';
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_EXPIRY_DAYS } from '@/shared/constants/auth';
-import { logError } from '@/shared/utils/errorHandler';
+import { logError, normalizeError } from '@/shared/utils/errorHandler';
 import { UserNotFoundError } from '@/shared/types/errors';
+import { getContextJobsEntitlements } from '@/shared/api/contextJobs';
+import { clearEntitlements, setEntitlements, setEntitlementsError, setEntitlementsLoading } from '@/shared/store/contextJobsEntitlementsSlice';
+import { useAppDispatch } from '@/shared/store/hooks';
 
 /**
  * User interface matching backend user data structure
@@ -96,6 +99,7 @@ const saveUserToStorage = (user: User | null): void => {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const dispatch = useAppDispatch();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -124,8 +128,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     saveUserToStorage(null);
     Cookies.remove(AUTH_COOKIE_NAME);
+    dispatch(clearEntitlements());
     syncInProgressRef.current = null;
-  }, []);
+  }, [dispatch]);
 
   /**
    * Handles user synchronization with backend
@@ -286,6 +291,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe();
     };
   }, [handleUserSync, handleLogout]);
+
+  useEffect(() => {
+    if (!isInitialized) {
+      return;
+    }
+
+    if (!user?.token) {
+      dispatch(clearEntitlements());
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadEntitlements = async (): Promise<void> => {
+      dispatch(setEntitlementsLoading());
+
+      try {
+        const entitlements = await getContextJobsEntitlements();
+        if (!cancelled) {
+          dispatch(setEntitlements(entitlements));
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const normalizedError = normalizeError(error);
+        logError(normalizedError, 'AuthProvider.loadContextJobsEntitlements');
+        dispatch(setEntitlementsError(normalizedError.message));
+      }
+    };
+
+    void loadEntitlements();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, isInitialized, user?.token, user?.id]);
 
   const login = useCallback(async (email: string, password: string): Promise<void> => {
     setIsLoading(true);

@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from "axios";
 import Cookies from "js-cookie";
+import { auth } from "@/shared/lib/firebase";
 import { AUTH_COOKIE_NAME } from "@/shared/constants/auth";
 import { normalizeError } from "@/shared/utils/errorHandler";
 
@@ -17,12 +18,26 @@ const apiClient = axios.create({
     timeout: 30000, // 30 seconds timeout
 });
 
+const getBearerToken = async (): Promise<string | null> => {
+    const firebaseUser = auth.currentUser;
+    if (firebaseUser) {
+        try {
+            return await firebaseUser.getIdToken();
+        } catch (error) {
+            console.warn("Failed to read Firebase auth token, falling back to cached token if available:", error);
+        }
+    }
+
+    const cachedToken = Cookies.get(AUTH_COOKIE_NAME);
+    return cachedToken || null;
+};
+
 /**
  * Request interceptor to attach authentication token
  */
 apiClient.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-        const token = Cookies.get(AUTH_COOKIE_NAME);
+    async (config: InternalAxiosRequestConfig) => {
+        const token = await getBearerToken();
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
         }

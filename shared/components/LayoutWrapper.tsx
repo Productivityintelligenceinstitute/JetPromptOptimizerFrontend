@@ -12,12 +12,13 @@ export default function LayoutWrapper({
     const pathname = usePathname();
     const isAuthPage = pathname === "/signup" || pathname === "/login" || pathname === "/get-started" || pathname.startsWith("/chat");
     const isAdminPage = pathname?.startsWith("/admin");
+    const isContextJobsPage = pathname?.startsWith("/context-jobs");
 
     return (
         <>
             {!isAuthPage && !isAdminPage && <Navbar />}
             {children}
-            {!isAuthPage && !isAdminPage && <Footer />}
+            {!isAuthPage && !isAdminPage && <Footer className={isContextJobsPage ? "md:pl-64" : ""} />}
         </>
     );
 }

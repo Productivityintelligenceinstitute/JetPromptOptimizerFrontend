@@ -6,9 +6,9 @@ import {
 } from "../../constants/FooterIcons";
 import { APP_ROUTES } from "@/config/navigation";
 
-const Footer = () => {
+const Footer = ({ className = "" }: { className?: string }) => {
     return (
-        <footer className="bg-jet-blue text-soft-white py-10 px-4 md:px-8 lg:px-16 font-sans">
+        <footer className={`bg-jet-blue text-soft-white py-10 px-4 md:px-8 lg:px-16 font-sans ${className}`}>
             <div className="max-w-7xl mx-auto pt-4">
 
                 {/* Middle Section: Links & Info */}

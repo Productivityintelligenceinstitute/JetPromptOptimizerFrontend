@@ -3,7 +3,14 @@
  */
 
 import { AxiosError } from 'axios';
-import { ApiError, AuthenticationError, UserNotFoundError, NetworkError } from '@/shared/types/errors';
+import {
+  ApiError,
+  AuthenticationError,
+  ForbiddenError,
+  RateLimitError,
+  UserNotFoundError,
+  NetworkError,
+} from '@/shared/types/errors';
 
 /**
  * Checks if an error is a network error (no response from server)
@@ -31,20 +38,55 @@ export const isRetryableError = (error: unknown): boolean => {
  * Converts various error types to ApiError
  */
 export const normalizeError = (error: unknown): ApiError => {
+  const extractMessage = (value: unknown): string => {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      const nestedError = record.error && typeof record.error === "object" ? (record.error as Record<string, unknown>) : null;
+      const nestedCandidates = [
+        record.detail,
+        record.message,
+        record.error,
+        nestedError?.detail,
+        nestedError?.message,
+        record.errors,
+      ];
+
+      for (const candidate of nestedCandidates) {
+        const nestedMessage = extractMessage(candidate);
+        if (nestedMessage) {
+          return nestedMessage;
+        }
+      }
+
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return "";
+      }
+    }
+
+    return "";
+  };
+
   if (error instanceof ApiError) {
     return error;
   }
 
   if (error instanceof AxiosError) {
     const statusCode = error.response?.status;
-    const message = error.response?.data?.detail || error.message || 'Request failed';
+    const responseData = error.response?.data;
+    const message = extractMessage(responseData) || error.message || 'Request failed';
     
     if (statusCode === 401) {
       return new AuthenticationError(
         message,
-        error.response?.data,
+        responseData,
         error.response ? {
-          data: error.response.data,
+          data: responseData,
           status: error.response.status,
         } : undefined
       );
@@ -53,9 +95,31 @@ export const normalizeError = (error: unknown): ApiError => {
     if (statusCode === 404) {
       return new UserNotFoundError(
         message,
-        error.response?.data,
+        responseData,
         error.response ? {
-          data: error.response.data,
+          data: responseData,
+          status: error.response.status,
+        } : undefined
+      );
+    }
+
+    if (statusCode === 403) {
+      return new ForbiddenError(
+        message,
+        responseData,
+        error.response ? {
+          data: responseData,
+          status: error.response.status,
+        } : undefined
+      );
+    }
+
+    if (statusCode === 429) {
+      return new RateLimitError(
+        message,
+        responseData,
+        error.response ? {
+          data: responseData,
           status: error.response.status,
         } : undefined
       );
@@ -69,9 +133,9 @@ export const normalizeError = (error: unknown): ApiError => {
       message,
       statusCode,
       error.code,
-      error.response?.data,
+      responseData,
       error.response ? {
-        data: error.response.data,
+        data: responseData,
         status: error.response.status,
       } : undefined
     );

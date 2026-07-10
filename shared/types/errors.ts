@@ -43,11 +43,27 @@ export class AuthenticationError extends ApiError {
   }
 }
 
+export class ForbiddenError extends ApiError {
+  constructor(message: string = 'Access denied', details?: unknown, response?: ApiError['response']) {
+    super(message, 403, 'FORBIDDEN', details, response);
+    this.name = 'ForbiddenError';
+    Object.setPrototypeOf(this, ForbiddenError.prototype);
+  }
+}
+
 export class UserNotFoundError extends ApiError {
   constructor(message: string = 'User not found', details?: unknown, response?: ApiError['response']) {
     super(message, 404, 'USER_NOT_FOUND', details, response);
     this.name = 'UserNotFoundError';
     Object.setPrototypeOf(this, UserNotFoundError.prototype);
+  }
+}
+
+export class RateLimitError extends ApiError {
+  constructor(message: string = 'Too many requests', details?: unknown, response?: ApiError['response']) {
+    super(message, 429, 'RATE_LIMITED', details, response);
+    this.name = 'RateLimitError';
+    Object.setPrototypeOf(this, RateLimitError.prototype);
   }
 }
 

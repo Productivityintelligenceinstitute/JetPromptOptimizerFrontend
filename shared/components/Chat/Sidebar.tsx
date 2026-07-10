@@ -270,6 +270,36 @@ export default function Sidebar({ isOpen, toggleSidebar }: SidebarProps) {
                 </Link>
             </div>
 
+            {/* Context Jobs Button */}
+            <div className={cn(
+                "pb-4 transition-all duration-300",
+                isOpen ? "px-4" : "px-2"
+            )}>
+                <Link
+                    href="/context-jobs"
+                    className={cn(
+                        "flex items-center rounded-md border border-blue-500/30 bg-blue-500/10 text-sm font-medium hover:bg-blue-500/20 transition-colors text-blue-100 hover:text-white",
+                        isOpen ? "gap-3 px-4 py-3" : "justify-center p-3"
+                    )}
+                    title={!isOpen ? "Context Jobs" : undefined}
+                >
+                    <svg
+                        className="h-4 w-4 flex-shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 6h16M4 12h10M4 18h16"
+                        />
+                    </svg>
+                    {isOpen && <span>Context Jobs</span>}
+                </Link>
+            </div>
+
             {/* Chat History - hidden when collapsed */}
             {isOpen && (
                 <>
