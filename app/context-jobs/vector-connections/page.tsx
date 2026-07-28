@@ -309,10 +309,12 @@ export default function VectorConnectionsPage() {
       return;
     }
 
+    const providerCandidate = selectedConnection.provider || DEFAULT_FORM_STATE.provider;
+
     setForm({
       name: selectedConnection.name || "",
-      provider: isVectorConnectionProvider(selectedConnection.provider || DEFAULT_FORM_STATE.provider)
-        ? selectedConnection.provider || DEFAULT_FORM_STATE.provider
+      provider: isVectorConnectionProvider(providerCandidate)
+        ? providerCandidate
         : DEFAULT_FORM_STATE.provider,
       status: selectedConnection.status || "active",
       apiKey: "",
