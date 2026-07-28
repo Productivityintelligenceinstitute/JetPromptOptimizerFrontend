@@ -6,10 +6,12 @@ import AuthGuard from "@/shared/components/auth/AuthGuard";
 import {
   createContextJobsVectorConnection,
   deleteContextJobsVectorConnection,
+  getContextJobsLlmKeys,
   getContextJobsVectorConnectionEmbeddingModels,
   getContextJobsVectorConnections,
   testContextJobsVectorConnection,
   updateContextJobsVectorConnection,
+  type ContextJobsLlmKey,
   type ContextJobsVectorConnection,
   type ContextJobsVectorConnectionEmbeddingModel,
 } from "@/shared/api/contextJobs";
@@ -28,7 +30,7 @@ type VectorConnectionFormState = {
   className: string;
   databaseUrl: string;
   tableName: string;
-  embeddingApiKey: string;
+  embeddingKeyId: string;
 };
 
 const DEFAULT_FORM_STATE: VectorConnectionFormState = {
@@ -42,13 +44,25 @@ const DEFAULT_FORM_STATE: VectorConnectionFormState = {
   className: "",
   databaseUrl: "",
   tableName: "",
-  embeddingApiKey: "",
+  embeddingKeyId: "",
 };
+
+const PLATFORM_EMBEDDING_PROVIDERS = new Set(["openai", "google"]);
+
+function embeddingKeyRequired(provider: string): boolean {
+  return !PLATFORM_EMBEDDING_PROVIDERS.has((provider || "").trim().toLowerCase());
+}
+
+function getEmbeddingKeyLabel(key: ContextJobsLlmKey): string {
+  const base = key.keyLabel || key.label || key.name || key.provider || "Embedding key";
+  const suffix = key.keyLastFour ? ` ••••${key.keyLastFour}` : "";
+  return `${base}${suffix}`;
+}
 
 const PROVIDER_HINTS: Record<VectorConnectionProvider, string> = {
   pinecone: "Index-based hosted vector storage. Add your Pinecone API key and index name.",
-  qdrant: "Qdrant cluster or cloud endpoint. Add the URL and collection name.",
-  weaviate: "Weaviate cluster. Add the endpoint and class/index configuration.",
+  qdrant: "Qdrant cluster or cloud endpoint. Add the URL, collection name, and API key for cloud clusters.",
+  weaviate: "Weaviate cluster. Add the endpoint, class name, and API key for Weaviate Cloud.",
   pgvector: "Postgres with pgvector. Add the database URL and table or schema details.",
 };
 
@@ -91,7 +105,7 @@ function createEmptyConnectionForm(provider: VectorConnectionProvider): VectorCo
     className: "",
     databaseUrl: "",
     tableName: "",
-    embeddingApiKey: "",
+    embeddingKeyId: "",
   };
 }
 
@@ -107,6 +121,16 @@ function getDefaultEmbeddingSelection(models: ContextJobsVectorConnectionEmbeddi
   return { provider, modelId };
 }
 
+function requiresQdrantApiKey(url: string): boolean {
+  const normalized = url.trim().toLowerCase();
+  return normalized.includes("qdrant.io") || normalized.includes("cloud.qdrant");
+}
+
+function requiresWeaviateApiKey(url: string): boolean {
+  const normalized = url.trim().toLowerCase();
+  return normalized.includes("weaviate.network") || normalized.includes("weaviate.cloud");
+}
+
 function buildConfigPayload(
   form: VectorConnectionFormState,
   embeddingProvider: string,
@@ -115,7 +139,7 @@ function buildConfigPayload(
   const base = {
     embedding_provider: embeddingProvider,
     embedding_model: embeddingModel,
-    ...(form.embeddingApiKey.trim() ? { embedding_api_key: form.embeddingApiKey.trim() } : {}),
+    ...(form.embeddingKeyId.trim() ? { embedding_llm_key_id: form.embeddingKeyId.trim() } : {}),
   };
 
   if (form.provider === "pinecone") {
@@ -131,6 +155,7 @@ function buildConfigPayload(
       ...base,
       url: form.url.trim(),
       collection_name: form.collectionName.trim(),
+      ...(form.apiKey.trim() ? { api_key: form.apiKey.trim() } : {}),
     };
   }
 
@@ -139,6 +164,7 @@ function buildConfigPayload(
       ...base,
       url: form.url.trim(),
       class_name: form.className.trim(),
+      ...(form.apiKey.trim() ? { api_key: form.apiKey.trim() } : {}),
     };
   }
 
@@ -156,18 +182,22 @@ function buildConfigPayload(
 function hasRequiredConfigFields(form: VectorConnectionFormState, embeddingProvider: string, embeddingModel: string): boolean {
   if (!embeddingProvider.trim() || !embeddingModel.trim()) return false;
 
-  if (embeddingProvider !== "openai" && !form.embeddingApiKey.trim()) return false;
+  if (embeddingKeyRequired(embeddingProvider) && !form.embeddingKeyId.trim()) return false;
 
   if (form.provider === "pinecone") {
     return Boolean(form.apiKey.trim() && form.indexName.trim());
   }
 
   if (form.provider === "qdrant") {
-    return Boolean(form.url.trim() && form.collectionName.trim());
+    if (!form.url.trim() || !form.collectionName.trim()) return false;
+    if (requiresQdrantApiKey(form.url) && !form.apiKey.trim()) return false;
+    return true;
   }
 
   if (form.provider === "weaviate") {
-    return Boolean(form.url.trim() && form.className.trim());
+    if (!form.url.trim() || !form.className.trim()) return false;
+    if (requiresWeaviateApiKey(form.url) && !form.apiKey.trim()) return false;
+    return true;
   }
 
   if (form.provider === "pgvector") {
@@ -186,7 +216,7 @@ function hasAnyConfigInput(form: VectorConnectionFormState): boolean {
       form.className.trim() ||
       form.databaseUrl.trim() ||
       form.tableName.trim() ||
-      form.embeddingApiKey.trim(),
+      form.embeddingKeyId.trim(),
   );
 }
 
@@ -204,6 +234,8 @@ export default function VectorConnectionsPage() {
   const [form, setForm] = useState<VectorConnectionFormState>(DEFAULT_FORM_STATE);
   const [embeddingProvider, setEmbeddingProvider] = useState("openai");
   const [embeddingModel, setEmbeddingModel] = useState("text-embedding-3-small");
+  const [embeddingKeys, setEmbeddingKeys] = useState<ContextJobsLlmKey[]>([]);
+  const [isLoadingEmbeddingKeys, setIsLoadingEmbeddingKeys] = useState(false);
   const initialEmbeddingProviderRef = useRef(embeddingProvider);
   const initialEmbeddingModelRef = useRef(embeddingModel);
 
@@ -239,6 +271,34 @@ export default function VectorConnectionsPage() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadEmbeddingKeys = async (): Promise<void> => {
+      try {
+        setIsLoadingEmbeddingKeys(true);
+        const keys = await getContextJobsLlmKeys(embeddingProvider, "embedding");
+        if (cancelled) return;
+        setEmbeddingKeys(keys);
+        setForm((current) => {
+          if (!current.embeddingKeyId) return current;
+          if (keys.some((key) => key.id === current.embeddingKeyId)) return current;
+          return { ...current, embeddingKeyId: "" };
+        });
+      } catch (err) {
+        if (cancelled) return;
+        setEmbeddingKeys([]);
+        setForm((current) => ({ ...current, embeddingKeyId: "" }));
+        setError(formatErrorMessage(err));
+      } finally {
+        if (!cancelled) setIsLoadingEmbeddingKeys(false);
+      }
+    };
+    void loadEmbeddingKeys();
+    return () => {
+      cancelled = true;
+    };
+  }, [embeddingProvider]);
+
   const selectedConnection = useMemo(
     () => connections.find((connection) => connection.id === selectedId) ?? null,
     [connections, selectedId],
@@ -262,7 +322,7 @@ export default function VectorConnectionsPage() {
       className: "",
       databaseUrl: "",
       tableName: "",
-      embeddingApiKey: "",
+      embeddingKeyId: "",
     });
   }, [selectedConnection]);
 
@@ -293,6 +353,12 @@ export default function VectorConnectionsPage() {
     const shouldIncludeConfig = !selectedId || hasAnyConfigInput(form);
 
     if (shouldIncludeConfig && !hasRequiredConfigFields(form, embeddingProvider, embeddingModel)) {
+      if (embeddingKeyRequired(embeddingProvider) && !form.embeddingKeyId.trim()) {
+        setError(
+          `Add a ${embeddingProvider} embedding key under Keys, then select it here before saving.`,
+        );
+        return;
+      }
       setError("Fill in the required connection fields before saving.");
       return;
     }
@@ -391,6 +457,8 @@ export default function VectorConnectionsPage() {
   const isQdrant = form.provider === "qdrant";
   const isWeaviate = form.provider === "weaviate";
   const isPgvector = form.provider === "pgvector";
+  const qdrantApiKeyRequired = isQdrant && requiresQdrantApiKey(form.url);
+  const weaviateApiKeyRequired = isWeaviate && requiresWeaviateApiKey(form.url);
   const providerChanged = Boolean(selectedConnection && form.provider !== selectedConnection.provider);
   const embeddingChanged =
     embeddingProvider !== initialEmbeddingProviderRef.current || embeddingModel !== initialEmbeddingModelRef.current;
@@ -462,7 +530,7 @@ export default function VectorConnectionsPage() {
                   <input
                     value={form.name}
                     onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                    placeholder="Production Pinecone KB"
+                    placeholder="Production KB"
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                   />
                 </label>
@@ -530,6 +598,7 @@ export default function VectorConnectionsPage() {
                       const nextModel = nextModels[0]?.modelId || "";
                       setEmbeddingProvider(nextProvider);
                       setEmbeddingModel(nextModel);
+                      setForm((current) => ({ ...current, embeddingKeyId: "" }));
                       setMessage(`Selected embedding provider ${nextProvider}.`);
                     }}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
@@ -620,6 +689,18 @@ export default function VectorConnectionsPage() {
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                       />
                     </label>
+                    <label className="block md:col-span-2">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">
+                        API key
+                        {qdrantApiKeyRequired && showConfigRequired ? <span className="text-rose-500">*</span> : null}
+                      </span>
+                      <input
+                        value={form.apiKey}
+                        onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
+                        placeholder="Required for Qdrant Cloud; optional for local clusters"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      />
+                    </label>
                   </>
                 ) : null}
 
@@ -644,6 +725,18 @@ export default function VectorConnectionsPage() {
                         value={form.className}
                         onChange={(event) => setForm((current) => ({ ...current, className: event.target.value }))}
                         placeholder="ContextJobChunk"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      />
+                    </label>
+                    <label className="block md:col-span-2">
+                      <span className="mb-2 block text-sm font-medium text-slate-700">
+                        API key
+                        {weaviateApiKeyRequired && showConfigRequired ? <span className="text-rose-500">*</span> : null}
+                      </span>
+                      <input
+                        value={form.apiKey}
+                        onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
+                        placeholder="Required for Weaviate Cloud; optional for local or self-hosted"
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                       />
                     </label>
@@ -680,14 +773,38 @@ export default function VectorConnectionsPage() {
                 <label className="block md:col-span-2">
                   <span className="mb-2 block text-sm font-medium text-slate-700">
                     Embedding API key
-                    {embeddingProvider !== "openai" ? <span className="text-rose-500">*</span> : null}
+                    {embeddingKeyRequired(embeddingProvider) && showConfigRequired ? (
+                      <span className="text-rose-500">*</span>
+                    ) : null}
                   </span>
-                  <input
-                    value={form.embeddingApiKey}
-                    onChange={(event) => setForm((current) => ({ ...current, embeddingApiKey: event.target.value }))}
-                    placeholder={embeddingProvider === "openai" ? "text-embedding-3-small" : "Required for this embedding provider"}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                  />
+                  <select
+                    value={form.embeddingKeyId}
+                    onChange={(event) => setForm((current) => ({ ...current, embeddingKeyId: event.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  >
+                    <option value="">
+                      {isLoadingEmbeddingKeys
+                        ? "Loading embedding keys..."
+                        : embeddingKeyRequired(embeddingProvider)
+                          ? embeddingKeys.length
+                            ? "Select an embedding key"
+                            : `No ${embeddingProvider} embedding keys saved — add one in Keys`
+                          : "Use Jet platform key (optional BYOK override)"}
+                    </option>
+                    {embeddingKeys.map((key) => (
+                      <option key={key.id} value={key.id}>
+                        {getEmbeddingKeyLabel(key)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {embeddingKeyRequired(embeddingProvider)
+                      ? `Required for ${embeddingProvider}. Add an embedding key for this provider under Keys first.`
+                      : "Optional for OpenAI/Google — leave blank to use Jet server keys, or pick a saved BYOK embedding key."}{" "}
+                    <Link href="/context-jobs/keys" className="font-semibold text-teal-700 hover:text-teal-900">
+                      Manage keys
+                    </Link>
+                  </p>
                 </label>
               </div>
 

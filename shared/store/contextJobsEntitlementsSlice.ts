@@ -13,6 +13,7 @@ const createEmptyEntitlements = (): ContextJobsEntitlementsState => ({
   message: null,
   upgradeRequired: null,
   keyMode: null,
+  canManageKeys: false,
   limits: null,
   usage: null,
   canCreateJob: false,
@@ -39,6 +40,7 @@ const contextJobsEntitlementsSlice = createSlice({
       state.message = action.payload.message;
       state.upgradeRequired = action.payload.upgradeRequired;
       state.keyMode = action.payload.keyMode;
+      state.canManageKeys = action.payload.canManageKeys ?? false;
       state.limits = action.payload.limits;
       state.usage = action.payload.usage;
       state.canCreateJob = action.payload.canCreateJob;

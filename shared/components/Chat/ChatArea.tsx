@@ -2,6 +2,8 @@
 import { forwardRef, useState } from 'react';
 import { ChatAreaProps } from '@/shared/types/chat';
 import { markdownToPlainText, markdownToHTML } from '@/shared/utils/markdownToPlainText';
+import { ConvertToContextJobButton } from '@/shared/components/context-jobs/ConvertToContextJobButton';
+import { extractOptimizedPrompt } from '@/shared/lib/convertOptimizedPromptToJob';
 
 const CopyIcon = ({ className }: { className?: string }) => (
     <svg
@@ -54,38 +56,6 @@ const ShareIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-/**
- * Extracts the optimized prompt from formatted message content
- */
-const extractOptimizedPrompt = (content: string): string => {
-    // Try to find "Optimized Prompt:" section
-    const optimizedPromptMatch = content.match(/\*\*Optimized Prompt:\*\*\s*\n([\s\S]*?)(?=\n\*\*|$)/);
-    if (optimizedPromptMatch) {
-        return optimizedPromptMatch[1].trim();
-    }
-    
-    // Try to find "Updated Prompt:" section (for mastery level)
-    const updatedPromptMatch = content.match(/\*\*Updated Prompt:\*\*\s*\n([\s\S]*?)(?=\n\*\*|$)/);
-    if (updatedPromptMatch) {
-        return updatedPromptMatch[1].trim();
-    }
-    
-    // Try to find "Master-Level Optimized Prompt:" section
-    const masterPromptMatch = content.match(/\*\*Master-Level Optimized Prompt:\*\*\s*\n([\s\S]*?)(?=\n\*\*|$)/);
-    if (masterPromptMatch) {
-        return masterPromptMatch[1].trim();
-    }
-    
-    // If no specific section found, return the first substantial paragraph
-    const lines = content.split('\n').filter(line => line.trim() && !line.trim().startsWith('**'));
-    if (lines.length > 0) {
-        return lines[0].trim();
-    }
-    
-    // Fallback: return the content itself
-    return content.trim();
-};
-
 interface ChatAreaWithShareProps extends ChatAreaProps {
     onShare?: (promptContent: string, messageId: string) => void;
     onGoToLibrary?: (messageId: string) => void;
@@ -97,23 +67,20 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
 
     const handleCopy = async (content: string, messageId: string) => {
         try {
-            // Convert markdown to HTML for rich text formatting
             const htmlContent = markdownToHTML(content);
             const plainText = markdownToPlainText(content);
-            
-            // Use Clipboard API with both HTML and plain text formats
+
             const clipboardItem = new ClipboardItem({
                 'text/html': new Blob([htmlContent], { type: 'text/html' }),
                 'text/plain': new Blob([plainText], { type: 'text/plain' })
             });
-            
+
             await navigator.clipboard.write([clipboardItem]);
             setCopiedMessageId(messageId);
             setTimeout(() => {
                 setCopiedMessageId(null);
             }, 2000);
-        } catch (err) {
-            // Fallback to plain text if HTML clipboard fails
+        } catch {
             try {
                 const plainText = markdownToPlainText(content);
                 await navigator.clipboard.writeText(plainText);
@@ -157,13 +124,11 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                 }`}
                         >
                             <div className="prose prose-sm max-w-none overflow-hidden">
-                                {message.content.split('\n').map((line, i, lines) => {
-                                    // Skip empty lines
+                                {message.content.split('\n').map((line, i) => {
                                     if (!line.trim()) {
                                         return null;
                                     }
-                                    
-                                    // Check if this is a list item (starts with ✓)
+
                                     if (line.trim().startsWith('✓')) {
                                         return (
                                             <div key={i} className="mb-1.5 flex items-start gap-2">
@@ -172,8 +137,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                             </div>
                                         );
                                     }
-                                    
-                                    // Check if this is a section header (starts with ** and ends with **)
+
                                     if (line.trim().startsWith('**') && line.trim().endsWith('**')) {
                                         const headerText = line.trim().slice(2, -2);
                                         return (
@@ -182,8 +146,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                             </h3>
                                         );
                                     }
-                                    
-                                    // Regular paragraph with bold text support
+
                                     const parts = line.split(/(\*\*.*?\*\*)/g);
                                     return (
                                         <p key={i} className="mb-2 text-gray-700 last:mb-0">
@@ -197,7 +160,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                     );
                                 })}
                             </div>
-                            
+
                             {message.role === 'assistant' && (
                                 <div className="absolute top-2 right-2 flex items-center gap-1 z-10 bg-white/80 backdrop-blur-sm rounded-md">
                                     {message.isShared ? (
@@ -210,7 +173,6 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                             title="View in library"
                                             aria-label="View in library"
                                         >
-                                            {/* Shared state icon (could be a filled share icon) */}
                                             <ShareIcon className="w-4 h-4" />
                                         </button>
                                     ) : (
@@ -225,6 +187,7 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                                         </button>
                                         )
                                     )}
+                                    <ConvertToContextJobButton content={message.content} variant="icon" />
                                     <button
                                         onClick={() => handleCopy(message.content, message.id)}
                                         className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
@@ -251,7 +214,6 @@ const ChatArea = forwardRef<HTMLDivElement, ChatAreaWithShareProps>(
                     </div>
                 ))}
 
-                {/* Loading indicator */}
                 {isLoading && (
                     <div className="flex gap-4 justify-start">
                         <div className="relative h-8 w-8 flex-shrink-0">

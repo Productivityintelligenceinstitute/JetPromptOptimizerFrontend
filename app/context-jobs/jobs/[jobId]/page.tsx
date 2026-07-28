@@ -13,6 +13,7 @@ import {
   ingestContextJobUpload,
   rollbackContextJob,
   startContextJobRun,
+  updateContextJob,
   type ContextJob,
   type ContextJobIngestionResponse,
   type ContextJobIngestionUploadResponse,
@@ -24,6 +25,40 @@ import { useAuth } from "@/shared/context/AuthContext";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
 
 const fieldCardClass = "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm";
+
+function isPolicyPlaceholderSource(source: unknown): boolean {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const record = source as Record<string, unknown>;
+  const id = String(record.id || "").toLowerCase();
+  const label = String(record.label || record.name || "").toLowerCase();
+  return id === "customer_policy" || label.includes("policy placeholder");
+}
+
+function jobHasPolicyPlaceholder(job: ContextJob): boolean {
+  const config = job.retrievalConfig;
+  if (!config || typeof config !== "object") return false;
+  const sources = (config as Record<string, unknown>).knowledgeSources;
+  if (!Array.isArray(sources)) return false;
+  return sources.some((item) => isPolicyPlaceholderSource(item));
+}
+
+function stripPolicyPlaceholderFromJob(job: ContextJob): {
+  retrievalConfig: Record<string, unknown>;
+  validationRules: unknown[];
+} {
+  const config = { ...(job.retrievalConfig || {}) };
+  const sources = Array.isArray(config.knowledgeSources) ? [...(config.knowledgeSources as unknown[])] : [];
+  config.knowledgeSources = sources.filter((item) => !isPolicyPlaceholderSource(item));
+
+  const rules = Array.isArray(job.validationRules) ? [...job.validationRules] : [];
+  const nextRules = rules.filter((rule) => {
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) return true;
+    const id = String((rule as Record<string, unknown>).id || "");
+    return !id.startsWith("policy_");
+  });
+
+  return { retrievalConfig: config, validationRules: nextRules };
+}
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
@@ -39,10 +74,13 @@ function formatCurrency(value: number | null | undefined): string {
     return "$0.00";
   }
 
+  const fractionDigits = value > 0 && value < 0.01 ? 4 : 2;
+
   return new Intl.NumberFormat([], {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 2,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   }).format(value);
 }
 
@@ -52,6 +90,28 @@ function formatSeconds(value: number | null | undefined): string {
   }
 
   return `${value.toFixed(value >= 10 ? 0 : 1)}s`;
+}
+
+function isIngestFailure(result: ContextJobIngestionResponse): boolean {
+  const status = String(result.status || "").toLowerCase();
+  if (status === "failed" || status === "escalated" || status === "error") {
+    return true;
+  }
+  if (result.error && String(result.error).trim()) {
+    return true;
+  }
+  const outcome = String(result.outcome || "").toLowerCase();
+  return outcome === "failed" || outcome === "blocked_by_policy";
+}
+
+function ingestFailureMessage(result: ContextJobIngestionResponse): string {
+  const fromError = typeof result.error === "string" ? result.error.trim() : "";
+  if (fromError) return fromError;
+  const fromNext = result.nextAction?.label?.trim();
+  if (fromNext) return fromNext;
+  const outcome = typeof result.outcome === "string" ? result.outcome.trim() : "";
+  if (outcome && outcome.toLowerCase() !== "failed") return outcome;
+  return "Ingestion failed. Check your vector connection and try again.";
 }
 
 function formatPercent(value: number | null | undefined): string {
@@ -74,47 +134,127 @@ function formatMaybeDate(value: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function snapshotField(
+  record: Record<string, unknown>,
+  camelKey: string,
+  snakeKey: string,
+): unknown {
+  if (camelKey in record) {
+    return record[camelKey];
+  }
+  if (snakeKey in record) {
+    return record[snakeKey];
+  }
+  return undefined;
+}
+
+function snapshotString(
+  record: Record<string, unknown>,
+  camelKey: string,
+  snakeKey: string,
+): string | null {
+  const value = snapshotField(record, camelKey, snakeKey);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function snapshotArray(record: Record<string, unknown>, camelKey: string, snakeKey: string): unknown[] {
+  const value = snapshotField(record, camelKey, snakeKey);
+  return Array.isArray(value) ? value : [];
+}
+
+function snapshotNumber(record: Record<string, unknown>, camelKey: string, snakeKey: string): number | null {
+  const value = snapshotField(record, camelKey, snakeKey);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function snapshotBoolean(record: Record<string, unknown>, camelKey: string, snakeKey: string): boolean | null {
+  const value = snapshotField(record, camelKey, snakeKey);
+  return typeof value === "boolean" ? value : null;
+}
+
 function getVersionSnapshotSummary(snapshot: Record<string, unknown> | null | undefined): Array<{ label: string; value: string }> {
   if (!snapshot || typeof snapshot !== "object") {
     return [];
   }
 
   const record = snapshot as Record<string, unknown>;
-  const toolPermissionsCount = Array.isArray(record.toolPermissions) ? record.toolPermissions.length : 0;
-  const trustedSourcesCount = Array.isArray(record.trustedSources) ? record.trustedSources.length : 0;
-  const glossaryTermsCount = Array.isArray(record.glossaryTerms) ? record.glossaryTerms.length : 0;
-  const relationshipsCount = Array.isArray(record.relationships) ? record.relationships.length : 0;
-  const validationRulesCount = Array.isArray(record.validationRules) ? record.validationRules.length : 0;
-  const memoryConfig = record.memoryConfig && typeof record.memoryConfig === "object" ? record.memoryConfig : null;
-  const memoryEnabled = memoryConfig ? Object.keys(memoryConfig).length > 0 : false;
+  const toolPermissionsCount = snapshotArray(record, "toolPermissions", "tool_permissions").length;
+  const trustedSourcesCount = snapshotArray(record, "trustedSources", "trusted_sources").length;
+  const glossaryTermsCount = snapshotArray(record, "glossaryTerms", "glossary_terms").length;
+  const relationshipsCount = snapshotArray(record, "relationships", "relationships").length;
+  const validationRulesCount = snapshotArray(record, "validationRules", "validation_rules").length;
+  const memoryConfig = snapshotField(record, "memoryConfig", "memory_config");
+  const memoryEnabled =
+    memoryConfig && typeof memoryConfig === "object" && !Array.isArray(memoryConfig)
+      ? Object.keys(memoryConfig as Record<string, unknown>).length > 0
+      : false;
+  const approvalRequired = snapshotBoolean(record, "approvalRequired", "approval_required");
+  const maxAgentTurns = snapshotNumber(record, "maxAgentTurns", "max_agent_turns");
 
   return [
-    { label: "Workflow type", value: typeof record.workflowType === "string" ? record.workflowType : "Not set" },
-    { label: "Retrieval mode", value: typeof record.retrievalMode === "string" ? record.retrievalMode : "Not set" },
-    { label: "Execution provider", value: typeof record.executionProvider === "string" ? record.executionProvider : "Not set" },
-    { label: "Execution model", value: typeof record.executionModel === "string" ? record.executionModel : "Not set" },
-    { label: "Execution mode", value: typeof record.executionMode === "string" ? record.executionMode : "Not set" },
+    {
+      label: "Workflow type",
+      value: snapshotString(record, "workflowType", "workflow_type") ?? "Not set",
+    },
+    {
+      label: "Retrieval mode",
+      value: snapshotString(record, "retrievalMode", "retrieval_mode") ?? "Not set",
+    },
+    {
+      label: "Execution provider",
+      value: snapshotString(record, "executionProvider", "execution_provider") ?? "Not set",
+    },
+    {
+      label: "Execution model",
+      value: snapshotString(record, "executionModel", "execution_model") ?? "Not set",
+    },
+    {
+      label: "Execution mode",
+      value: snapshotString(record, "executionMode", "execution_mode") ?? "Not set",
+    },
     {
       label: "Max agent turns",
-      value: typeof record.maxAgentTurns === "number" ? String(record.maxAgentTurns) : "Not set",
+      value: maxAgentTurns !== null ? String(maxAgentTurns) : "Not set",
     },
     {
       label: "Approval required",
-      value: typeof record.approvalRequired === "boolean" ? (record.approvalRequired ? "Yes" : "No") : "Not set",
+      value: approvalRequired === null ? "Not set" : approvalRequired ? "Yes" : "No",
     },
     { label: "Memory", value: memoryEnabled ? "On" : "Off" },
-    { label: "Tool permissions", value: toolPermissionsCount > 0 ? `${toolPermissionsCount} tools` : "Not set" },
-    { label: "Trusted sources", value: trustedSourcesCount > 0 ? `${trustedSourcesCount} sources` : "Not set" },
-    { label: "Glossary terms", value: glossaryTermsCount > 0 ? `${glossaryTermsCount} terms` : "Not set" },
-    { label: "Relationships", value: relationshipsCount > 0 ? `${relationshipsCount} relationships` : "Not set" },
-    { label: "Validation rules", value: validationRulesCount > 0 ? `${validationRulesCount} rules` : "Not set" },
+    {
+      label: "Tool permissions",
+      value: toolPermissionsCount > 0 ? `${toolPermissionsCount} tools` : "None configured",
+    },
+    {
+      label: "Trusted sources",
+      value: trustedSourcesCount > 0 ? `${trustedSourcesCount} sources` : "None configured",
+    },
+    {
+      label: "Glossary terms",
+      value: glossaryTermsCount > 0 ? `${glossaryTermsCount} terms` : "None configured",
+    },
+    {
+      label: "Relationships",
+      value: relationshipsCount > 0 ? `${relationshipsCount} relationships` : "None configured",
+    },
+    {
+      label: "Validation rules",
+      value: validationRulesCount > 0 ? `${validationRulesCount} rules` : "None configured",
+    },
     {
       label: "Policy profile",
-      value: typeof record.policyProfile === "string" && record.policyProfile.trim() ? record.policyProfile : "Not set",
+      value: snapshotString(record, "policyProfile", "policy_profile") ?? "Not set",
     },
     {
       label: "Escalation policy",
-      value: typeof record.escalationPolicy === "string" && record.escalationPolicy.trim() ? record.escalationPolicy : "Not set",
+      value: snapshotString(record, "escalationPolicy", "escalation_policy") ?? "Not set",
     },
   ];
 }
@@ -162,12 +302,12 @@ function resolveCreatorLabel(
   email: string | null | undefined,
 ): string {
   if (!creator) {
-    return "Not set";
+    return "Unknown";
   }
 
   const matchesCurrentUser = creator === userId || creator === email;
   if (matchesCurrentUser) {
-    return userName || email || "Current user";
+    return userName || email || "You";
   }
 
   if (!looksLikeOpaqueId(creator)) {
@@ -175,6 +315,234 @@ function resolveCreatorLabel(
   }
 
   return "Another user";
+}
+
+function formatChangeType(changeType: string | null | undefined): string {
+  if (!changeType?.trim()) {
+    return "Revision";
+  }
+
+  return changeType.replace(/_/g, " ");
+}
+
+function versionSummaryLine(version: ContextJobVersion): string {
+  if (version.notes?.trim()) {
+    return version.notes.trim();
+  }
+
+  if (version.rollbackFromVersion) {
+    return `Restored from version ${version.rollbackFromVersion}`;
+  }
+
+  switch (version.changeType) {
+    case "create":
+      return "Initial publish";
+    case "save":
+      return "Configuration saved";
+    case "seed":
+      return "Initial version seed";
+    case "rollback":
+      return "Rolled back to this revision";
+    default:
+      return "Revision recorded";
+  }
+}
+
+function VersionHistoryItem({
+  version,
+  isLatest,
+  isExpanded,
+  onToggleExpand,
+  onRollback,
+  rollbackBusy,
+  creatorLabel,
+}: {
+  version: ContextJobVersion;
+  isLatest: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onRollback: (versionNumber: number) => void;
+  rollbackBusy: boolean;
+  creatorLabel: (value: string | null | undefined) => string;
+}) {
+  const changeTypeLabel = formatChangeType(version.changeType);
+
+  return (
+    <div
+      className={`rounded-2xl border px-4 py-4 ${
+        version.isCurrent ? "border-teal-300 bg-teal-50/70" : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? `Collapse version ${version.version}` : `Expand version ${version.version}`}
+          className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100"
+        >
+          <span className={`text-xs transition-transform ${isExpanded ? "rotate-180" : ""}`}>▼</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className="min-w-0 flex-1 text-left"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-slate-900">Version {version.version}</p>
+            {isLatest ? (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Latest</span>
+            ) : null}
+            {version.isCurrent ? (
+              <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-semibold text-teal-700">Current</span>
+            ) : null}
+            {version.changeType ? (
+              <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold capitalize text-slate-600">
+                {changeTypeLabel}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            {formatMaybeDate(version.createdAt)}
+            {version.createdBy ? ` · ${creatorLabel(version.createdBy)}` : ""}
+          </p>
+          <p className="mt-2 text-sm text-slate-700">{versionSummaryLine(version)}</p>
+        </button>
+      </div>
+
+      {isExpanded ? (
+        <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 pl-11">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl bg-white px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Created at</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{formatMaybeDate(version.createdAt)}</p>
+            </div>
+            <div className="rounded-2xl bg-white px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Change type</p>
+              <p className="mt-1 text-sm font-semibold capitalize text-slate-900">{changeTypeLabel}</p>
+            </div>
+            {version.rollbackFromVersion ? (
+              <div className="rounded-2xl bg-white px-4 py-3 sm:col-span-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Rolled back from</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">Version {version.rollbackFromVersion}</p>
+              </div>
+            ) : null}
+          </div>
+
+          {version.notes?.trim() ? (
+            <div className="rounded-2xl bg-white px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
+              <p className="mt-1 text-sm leading-6 text-slate-700">{version.notes.trim()}</p>
+            </div>
+          ) : null}
+
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Snapshot</p>
+            <p className="mt-2 text-sm text-slate-600">Key settings captured in this revision.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {getVersionSnapshotSummary(version.jobSnapshot).map((item) => (
+                <div key={item.label} className="rounded-2xl bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{item.label}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              Rollback restores this revision&apos;s saved configuration as the live job.
+            </p>
+            <button
+              type="button"
+              disabled={Boolean(version.isCurrent) || rollbackBusy}
+              onClick={() => onRollback(version.version)}
+              className="inline-flex shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {rollbackBusy ? "Rolling back..." : "Rollback to this version"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PublishHistoryPanel({
+  items,
+  isLoading,
+}: {
+  items: ContextJobPublishHistoryItem[];
+  isLoading: boolean;
+}) {
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((current) => ({ ...current, [id]: !current[id] }));
+  };
+
+  return (
+    <div className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Publish history</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-900">Status changes for this job</h3>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+          {items.length} events
+        </span>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {isLoading ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            Loading publish history...
+          </div>
+        ) : items.length ? (
+          items.map((item) => {
+            const isExpanded = Boolean(expandedIds[item.id]);
+            return (
+              <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(item.id)}
+                    aria-expanded={isExpanded}
+                    className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100"
+                  >
+                    <span className={`text-xs transition-transform ${isExpanded ? "rotate-180" : ""}`}>▼</span>
+                  </button>
+                  <button type="button" onClick={() => toggleExpanded(item.id)} className="min-w-0 flex-1 text-left">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {item.fromStatus} → {item.toStatus}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatMaybeDate(item.changedAt)}
+                      {item.changedBy ? ` · ${item.changedBy}` : ""}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-700">
+                      {item.notes?.trim() || "Status change recorded"}
+                    </p>
+                  </button>
+                </div>
+                {isExpanded && item.notes?.trim() ? (
+                  <div className="mt-4 border-t border-slate-200 pt-4 pl-11">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-700">{item.notes.trim()}</p>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            No publish history yet. Status changes will appear here after publish or archive actions.
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function normalizeJobId(jobIdParam: string | string[] | undefined): string | null {
@@ -209,12 +577,15 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
   const [ingestText, setIngestText] = useState("");
   const [ingestFileName, setIngestFileName] = useState<string | null>(null);
   const [ingestFiles, setIngestFiles] = useState<File[]>([]);
+  const [ingestMetaDraft, setIngestMetaDraft] = useState({ key: "", value: "" });
+  const [ingestMetadataPairs, setIngestMetadataPairs] = useState<Array<{ key: string; value: string }>>([]);
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestError, setIngestError] = useState<string | null>(null);
   const [ingestResult, setIngestResult] = useState<ContextJobIngestionResponse | ContextJobIngestionUploadResponse | null>(null);
   const [rollbackBusyVersion, setRollbackBusyVersion] = useState<number | null>(null);
-  const [isVersionListOpen, setIsVersionListOpen] = useState(false);
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [expandedVersionIds, setExpandedVersionIds] = useState<Record<string, boolean>>({});
+  const [isRemovingPolicyPlaceholder, setIsRemovingPolicyPlaceholder] = useState(false);
+  const [policyPlaceholderFeedback, setPolicyPlaceholderFeedback] = useState<string | null>(null);
   const ingestFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadJob = useCallback(async (): Promise<void> => {
@@ -302,19 +673,9 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
     void loadHistory();
   }, [loadHistory]);
 
-  useEffect(() => {
-    if (!versions.length) {
-      setSelectedVersionId(null);
-      return;
-    }
-
-    const sortedVersions = versions.slice().sort((a, b) => b.version - a.version);
-    const selectedExists = selectedVersionId ? sortedVersions.some((version) => version.id === selectedVersionId) : false;
-
-    if (!selectedVersionId || !selectedExists) {
-      setSelectedVersionId(sortedVersions[0]?.id ?? null);
-    }
-  }, [selectedVersionId, versions]);
+  const toggleVersionExpanded = (versionId: string) => {
+    setExpandedVersionIds((current) => ({ ...current, [versionId]: !current[versionId] }));
+  };
 
   const glossaryTermsCount = countItems(job?.glossaryTerms);
   const relationshipsCount = countItems(job?.relationships);
@@ -349,12 +710,24 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
       setIsStartingRun(true);
       setRunError(null);
       const started = await startContextJobRun(job.id, runRequest.trim());
-      router.push(`/context-jobs/runs/${started.id}`);
+      router.push(`/context-jobs/runs?started=${encodeURIComponent(started.id)}`);
     } catch (err) {
       setRunError(err instanceof Error ? err.message : "Failed to start run");
     } finally {
       setIsStartingRun(false);
     }
+  };
+
+  const buildIngestMetadata = (documentName: string): Record<string, string> => {
+    const metadata: Record<string, string> = { documentName };
+    for (const pair of ingestMetadataPairs) {
+      const key = pair.key.trim();
+      const value = pair.value.trim();
+      if (key && value) {
+        metadata[key] = value;
+      }
+    }
+    return metadata;
   };
 
   const submitIngestion = async (documentText: string, documentName: string): Promise<void> => {
@@ -377,14 +750,16 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
         documents: [
           {
             text: trimmedText,
-            metadata: {
-              documentName,
-            },
+            metadata: buildIngestMetadata(documentName),
           },
         ],
       });
 
       setIngestResult(response);
+      if (isIngestFailure(response)) {
+        return;
+      }
+
       setIngestText("");
       setIngestFiles([]);
       setIngestFileName(null);
@@ -414,8 +789,20 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
       setIngestError(null);
       setIngestResult(null);
 
-      const response = await ingestContextJobUpload(job!.id, ingestFiles);
+      const response = await ingestContextJobUpload(
+        job!.id,
+        ingestFiles,
+        Object.fromEntries(
+          ingestMetadataPairs
+            .filter((pair) => pair.key.trim() && pair.value.trim())
+            .map((pair) => [pair.key.trim(), pair.value.trim()]),
+        ),
+      );
       setIngestResult(response);
+      if (isIngestFailure(response)) {
+        return;
+      }
+
       setIngestFiles([]);
       setIngestFileName(null);
 
@@ -437,6 +824,28 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
     setIngestFileName(files.length ? `${files.length} file${files.length === 1 ? "" : "s"} selected` : null);
   };
 
+  const handleRemovePolicyPlaceholder = async (): Promise<void> => {
+    if (!job || !jobHasPolicyPlaceholder(job)) return;
+    setIsRemovingPolicyPlaceholder(true);
+    setPolicyPlaceholderFeedback(null);
+    setError(null);
+    try {
+      const next = stripPolicyPlaceholderFromJob(job);
+      const updated = await updateContextJob(job.id, {
+        retrievalConfig: next.retrievalConfig,
+        validationRules: next.validationRules,
+      });
+      setJob(updated);
+      setPolicyPlaceholderFeedback(
+        "Generic template policy removed from this job. Your ingested policy documents in the knowledge base are unchanged.",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove template policy");
+    } finally {
+      setIsRemovingPolicyPlaceholder(false);
+    }
+  };
+
   const handleRollback = async (versionNumber: number): Promise<void> => {
     if (!job) {
       return;
@@ -447,7 +856,7 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
       setHistoryError(null);
       const updatedJob = await rollbackContextJob(job.id, {
         version: versionNumber,
-        notes: `Rolled back from version ${versionNumber} in the frontend`,
+        notes: `Restored version ${versionNumber} from job detail`,
       });
       setJob(updatedJob);
       await Promise.all([loadJob(), loadHistory()]);
@@ -618,10 +1027,44 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
                     <textarea
                       value={runRequest}
                       onChange={(event) => setRunRequest(event.target.value)}
-                      placeholder="What should this job do?"
+                      placeholder={
+                        job.workflowType === "contract_review"
+                          ? "Review Acme MSA renewal — vendor Acme Cloud, expiry 2026-12-31. Or paste a public contract URL here for contract-analyzer."
+                          : "What should this job do?"
+                      }
                       className="min-h-36 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                     />
                   </label>
+
+                  {job.workflowType === "contract_review" ? (
+                    <p className="text-sm leading-6 text-slate-600">
+                      Contract review runs without blocking on an empty KB, but grounded results need contract
+                      evidence. Ingest contract + policy below, or put a contract URL / pasted text in User request
+                      above. Vendor and expiry in the request help retrieval scope when KB metadata exists.
+                    </p>
+                  ) : null}
+
+                  {jobHasPolicyPlaceholder(job) ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-medium text-amber-950">Template policy is still wired</p>
+                      <p className="mt-1 text-sm leading-6 text-amber-900/80">
+                        This job includes the generic Policy Placeholder from the template. If you ingest your own
+                        policy into the knowledge base, leave this in place and both can mix in retrieval. Remove it
+                        when you want runs to use only your ingested policy.
+                      </p>
+                      {policyPlaceholderFeedback ? (
+                        <p className="mt-2 text-sm text-emerald-800">{policyPlaceholderFeedback}</p>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void handleRemovePolicyPlaceholder()}
+                        disabled={isRemovingPolicyPlaceholder}
+                        className="mt-3 inline-flex items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-950 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isRemovingPolicyPlaceholder ? "Removing..." : "Remove Policy Placeholder"}
+                      </button>
+                    </div>
+                  ) : null}
 
                   {runError ? (
                     <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-800">
@@ -640,7 +1083,7 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
                     </button>
                     <p className="text-xs text-slate-500">
                       {canRun
-                        ? "The app will create the run and move you to the live run detail page."
+                        ? "The app will create the run and take you to the runs list, where status updates live."
                         : "Run creation is disabled for your current plan."}
                     </p>
                   </div>
@@ -654,12 +1097,68 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Ingestion</p>
                   <h3 className="mt-2 text-xl font-semibold text-slate-900">Add text content to this job</h3>
                   <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                    Paste a source excerpt or upload one or more documents. The job will ingest the content into its configured knowledge target.
+                    Paste or upload documents into this job&apos;s knowledge target ({job.retrievalMode === "external" ? "your vector connection" : "Jet managed KB — shared for your workspace, not isolated per job"}).
+                    Ingestion chunks text, infers metadata (document type, vendor, expiry when detectable), and embeds for retrieval on future runs.
+                    Stamp your own metadata keys below (for example <span className="font-medium text-slate-800">contractId</span>) and reuse the same key/value in the job&apos;s Trusted sources so retrieval stays scoped.
                   </p>
                 </div>
                 <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  Target: {job.retrievalMode === "external" ? "External knowledge base" : "Jet KB"}
+                  Target: {job.retrievalMode === "external" ? "External knowledge base (vector connection)" : "Managed knowledge base (Jet KB)"}
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-medium text-slate-800">Ingest metadata (optional)</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Applied to both pasted text and uploads. Use the same keys later in Trusted sources.
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <input
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    placeholder="Key (e.g. contractId)"
+                    value={ingestMetaDraft.key}
+                    onChange={(event) => setIngestMetaDraft((current) => ({ ...current, key: event.target.value }))}
+                  />
+                  <input
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    placeholder="Value (e.g. ACME-MSA-2024-001)"
+                    value={ingestMetaDraft.value}
+                    onChange={(event) => setIngestMetaDraft((current) => ({ ...current, value: event.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    className="rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                    disabled={!ingestMetaDraft.key.trim() || !ingestMetaDraft.value.trim()}
+                    onClick={() => {
+                      const key = ingestMetaDraft.key.trim();
+                      const value = ingestMetaDraft.value.trim();
+                      if (!key || !value) return;
+                      setIngestMetadataPairs((current) => {
+                        const without = current.filter((pair) => pair.key.toLowerCase() !== key.toLowerCase());
+                        return [...without, { key, value }];
+                      });
+                      setIngestMetaDraft({ key: "", value: "" });
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+                {ingestMetadataPairs.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {ingestMetadataPairs.map((pair) => (
+                      <button
+                        key={pair.key}
+                        type="button"
+                        onClick={() =>
+                          setIngestMetadataPairs((current) => current.filter((item) => item.key !== pair.key))
+                        }
+                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                      >
+                        {pair.key}={pair.value} ×
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -765,18 +1264,44 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
               ) : null}
 
               {ingestResult ? (
-                <div className="mt-4 space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <div
+                  className={
+                    isIngestFailure(ingestResult)
+                      ? "mt-4 space-y-4 rounded-2xl border border-rose-200 bg-rose-50 p-4"
+                      : "mt-4 space-y-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
+                  }
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-emerald-900">
+                      <p
+                        className={
+                          isIngestFailure(ingestResult)
+                            ? "text-sm font-semibold text-rose-900"
+                            : "text-sm font-semibold text-emerald-900"
+                        }
+                      >
                         Ingestion {ingestResult.status || "completed"}
                       </p>
-                      <p className="mt-1 text-sm text-emerald-800">
-                        {ingestResult.outcome || "Content ingested successfully."}
+                      <p
+                        className={
+                          isIngestFailure(ingestResult)
+                            ? "mt-1 text-sm text-rose-800"
+                            : "mt-1 text-sm text-emerald-800"
+                        }
+                      >
+                        {isIngestFailure(ingestResult)
+                          ? ingestFailureMessage(ingestResult)
+                          : ingestResult.outcome || "Content ingested successfully."}
                       </p>
                     </div>
                     {ingestResult.nextAction ? (
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-800">
+                      <span
+                        className={
+                          isIngestFailure(ingestResult)
+                            ? "rounded-full bg-white px-3 py-1 text-xs font-semibold text-rose-800"
+                            : "rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-800"
+                        }
+                      >
                         Next: {ingestResult.nextAction.label || ingestResult.nextAction.type || "Continue"}
                       </span>
                     ) : null}
@@ -848,89 +1373,93 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
             </section>
 
             <section className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-              <div className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Performance snapshot</p>
-                    <h3 className="mt-2 text-xl font-semibold text-slate-900">VIZ-7 metrics from the prototype</h3>
-                  </div>
-                  <p className="text-sm text-slate-500">Stats from the latest run history</p>
-                </div>
-
-                {statsError ? (
-                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-                    <p className="text-sm font-medium">{statsError}</p>
-                  </div>
-                ) : null}
-
-                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {[
-                    { label: "Total runs", value: stats?.totalRuns ?? 0 },
-                    { label: "Completed", value: stats?.completedRuns ?? 0 },
-                    { label: "Failed", value: stats?.failedRuns ?? 0 },
-                    { label: "Completion rate", value: formatPercent(stats?.completionRate ?? 0) },
-                    { label: "Warning rate", value: formatPercent(stats?.warningRate ?? 0) },
-                    { label: "Review / escalation", value: formatPercent(stats?.reviewEscalationRate ?? 0) },
-                    { label: "Avg runtime", value: formatSeconds(stats?.averageRuntimeSeconds ?? 0) },
-                    { label: "Avg cost", value: formatCurrency(stats?.averageCost ?? 0) },
-                  ].map((metric) => (
-                    <div key={metric.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
-                      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{metric.value}</p>
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Performance snapshot</p>
+                      <h3 className="mt-2 text-xl font-semibold text-slate-900">Run performance metrics</h3>
                     </div>
-                  ))}
-                </div>
+                    <p className="text-sm text-slate-500">Stats from the latest run history</p>
+                  </div>
 
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Recent runs</p>
-                    <div className="mt-3 space-y-3">
-                      {stats?.recentRuns?.length ? (
-                        stats.recentRuns.map((run) => (
-                          <Link
-                            key={run.runId}
-                            href={`/context-jobs/runs/${run.runId}`}
-                            className="block rounded-2xl bg-slate-50 px-4 py-3 transition-colors hover:bg-slate-100"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-semibold text-slate-900">
-                                {formatRunLabel(run.runId, run.outcome)}
-                              </p>
-                              <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{run.state}</span>
+                  {statsError ? (
+                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                      <p className="text-sm font-medium">{statsError}</p>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {[
+                      { label: "Total runs", value: stats?.totalRuns ?? 0 },
+                      { label: "Completed", value: stats?.completedRuns ?? 0 },
+                      { label: "Failed", value: stats?.failedRuns ?? 0 },
+                      { label: "Completion rate", value: formatPercent(stats?.completionRate ?? 0) },
+                      { label: "Warning rate", value: formatPercent(stats?.warningRate ?? 0) },
+                      { label: "Review / escalation", value: formatPercent(stats?.reviewEscalationRate ?? 0) },
+                      { label: "Avg runtime", value: formatSeconds(stats?.averageRuntimeSeconds ?? 0) },
+                      { label: "Avg cost", value: formatCurrency(stats?.averageCost ?? 0) },
+                    ].map((metric) => (
+                      <div key={metric.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{metric.label}</p>
+                        <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{metric.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Recent runs</p>
+                      <div className="mt-3 space-y-3">
+                        {stats?.recentRuns?.length ? (
+                          stats.recentRuns.map((run) => (
+                            <Link
+                              key={run.runId}
+                              href={`/context-jobs/runs/${run.runId}`}
+                              className="block rounded-2xl bg-slate-50 px-4 py-3 transition-colors hover:bg-slate-100"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {formatRunLabel(run.runId, run.outcome)}
+                                </p>
+                                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{run.state}</span>
+                              </div>
+                              <p className="mt-1 break-all text-xs text-slate-500">{run.runId}</p>
+                            </Link>
+                          ))
+                        ) : (
+                          <p className="text-sm text-slate-600">No recent runs are available yet.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Top validation issues</p>
+                      <div className="mt-3 space-y-3">
+                        {stats?.topValidationFailures?.length ? (
+                          stats.topValidationFailures.map((issue) => (
+                            <div key={issue.message} className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
+                              <p className="text-sm leading-6 text-slate-700">{issue.message}</p>
+                              <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-900">{issue.count}</span>
                             </div>
-                            <p className="mt-1 break-all text-xs text-slate-500">{run.runId}</p>
-                          </Link>
-                        ))
-                      ) : (
-                        <p className="text-sm text-slate-600">No recent runs are available yet.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Top validation issues</p>
-                    <div className="mt-3 space-y-3">
-                      {stats?.topValidationFailures?.length ? (
-                        stats.topValidationFailures.map((issue) => (
-                          <div key={issue.message} className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
-                            <p className="text-sm leading-6 text-slate-700">{issue.message}</p>
-                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-900">{issue.count}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-slate-600">No validation issues were reported.</p>
-                      )}
+                          ))
+                        ) : (
+                          <p className="text-sm text-slate-600">No validation issues were reported.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
+
+                <PublishHistoryPanel items={publishHistory} isLoading={isLoadingHistory} />
               </div>
 
               <div className="space-y-4">
                 <div className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Governance summary</p>
-                  <h3 className="mt-2 text-xl font-semibold text-slate-900">VIZ-8 control details</h3>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900">Governance controls</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    These fields capture the lightweight governance context shown in the prototype: ownership, policy, and source trust.
+                    Ownership, policy, and source-trust settings for this job.
                   </p>
 
                   <div className="mt-5 space-y-3">
@@ -948,6 +1477,9 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Version history</p>
                       <h3 className="mt-2 text-xl font-semibold text-slate-900">Published and edited revisions</h3>
+                      <p className="mt-2 text-sm text-slate-600">
+                        Expand any version to inspect its snapshot or roll back to it.
+                      </p>
                     </div>
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                       {versions.length} versions
@@ -966,259 +1498,21 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
                         Loading version history...
                       </div>
                     ) : sortedVersions.length ? (
-                      <div className="space-y-3">
-                        {latestVersion ? (
-                          <div
-                            className={`rounded-2xl border px-4 py-4 ${
-                              selectedVersionId === latestVersion.id ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-slate-50"
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setSelectedVersionId(latestVersion.id)}
-                              className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-start sm:justify-between"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-sm font-semibold text-slate-900">Version {latestVersion.version}</p>
-                                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Latest</span>
-                                  {latestVersion.isCurrent ? (
-                                    <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-600">Current</span>
-                                  ) : null}
-                                  {latestVersion.changeType ? (
-                                    <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                                      {latestVersion.changeType}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {formatMaybeDate(latestVersion.createdAt)}
-                                  {latestVersion.createdBy ? ` - ${creatorLabel(latestVersion.createdBy)}` : ""}
-                                </p>
-                                <p className="mt-2 text-sm text-slate-700">
-                                  {latestVersion.notes || (latestVersion.rollbackFromVersion ? `Rolled back from ${latestVersion.rollbackFromVersion}` : "No notes provided")}
-                                </p>
-                              </div>
-                              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                                {selectedVersionId === latestVersion.id ? "Selected" : "Inspect"}
-                              </span>
-                            </button>
-
-                            {selectedVersionId === latestVersion.id ? (
-                              <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <div className="rounded-2xl bg-white px-4 py-3">
-                                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Created at</p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">{formatMaybeDate(latestVersion.createdAt)}</p>
-                                  </div>
-                                  <div className="rounded-2xl bg-white px-4 py-3">
-                                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Change type</p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">{latestVersion.changeType || "Not set"}</p>
-                                  </div>
-                                  <div className="rounded-2xl bg-white px-4 py-3">
-                                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Rolled back from</p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                      {latestVersion.rollbackFromVersion ? `Version ${latestVersion.rollbackFromVersion}` : "Not set"}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="rounded-2xl bg-white px-4 py-3">
-                                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
-                                  <p className="mt-1 text-sm leading-6 text-slate-700">
-                                    {latestVersion.notes || (latestVersion.rollbackFromVersion ? `Rolled back from version ${latestVersion.rollbackFromVersion}` : "No notes provided")}
-                                  </p>
-                                </div>
-
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Snapshot</p>
-                                  <p className="mt-2 text-sm text-slate-600">A readable summary of the version configuration.</p>
-                                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                    {getVersionSnapshotSummary(latestVersion.jobSnapshot).map((item) => (
-                                      <div key={item.label} className="rounded-2xl bg-white px-4 py-3">
-                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{item.label}</p>
-                                        <p className="mt-1 text-sm font-semibold text-slate-900">{item.value}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        <div className="rounded-2xl border border-slate-200 bg-white">
-                          <button
-                            type="button"
-                            onClick={() => setIsVersionListOpen((current) => !current)}
-                            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-                          >
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">All versions</p>
-                              <p className="mt-0.5 text-xs text-slate-500">Click any version to inspect the full snapshot</p>
-                            </div>
-                            <span className={`text-slate-500 transition-transform ${isVersionListOpen ? "rotate-180" : ""}`}>v</span>
-                          </button>
-
-                          {isVersionListOpen ? (
-                            <div className="space-y-3 border-t border-slate-200 p-4">
-                              {sortedVersions.map((version) => {
-                                const isSelected = selectedVersionId === version.id;
-                                return (
-                                  <div
-                                    key={version.id}
-                                    className={`rounded-2xl border px-4 py-4 ${
-                                      isSelected ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-slate-50"
-                                    }`}
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedVersionId(version.id)}
-                                      className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-start sm:justify-between"
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-semibold text-slate-900">Version {version.version}</p>
-                                          {version.id === latestVersion?.id ? (
-                                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Latest</span>
-                                          ) : null}
-                                          {version.isCurrent ? (
-                                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Current</span>
-                                          ) : null}
-                                          {version.changeType ? (
-                                            <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                                              {version.changeType}
-                                            </span>
-                                          ) : null}
-                                          {isSelected ? (
-                                            <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-semibold text-teal-700">Selected</span>
-                                          ) : null}
-                                        </div>
-                                        <p className="mt-1 text-xs text-slate-500">
-                                          {formatMaybeDate(version.createdAt)}
-                                          {version.createdBy ? ` - ${creatorLabel(version.createdBy)}` : ""}
-                                        </p>
-                                        <p className="mt-2 text-sm text-slate-700">
-                                          {version.notes || (version.rollbackFromVersion ? `Rolled back from ${version.rollbackFromVersion}` : "No notes provided")}
-                                        </p>
-                                      </div>
-
-                                      <div className="flex shrink-0 items-center gap-2">
-                                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                          {isSelected ? "Selected" : "Inspect"}
-                                        </span>
-                                        <span className="text-slate-500">v</span>
-                                      </div>
-                                    </button>
-
-                                    {isSelected ? (
-                                      <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
-                                        <div className="grid gap-3 sm:grid-cols-2">
-                                          <div className="rounded-2xl bg-white px-4 py-3">
-                                            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Created at</p>
-                                            <p className="mt-1 text-sm font-semibold text-slate-900">{formatMaybeDate(version.createdAt)}</p>
-                                          </div>
-                                          <div className="rounded-2xl bg-white px-4 py-3">
-                                            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Change type</p>
-                                            <p className="mt-1 text-sm font-semibold text-slate-900">{version.changeType || "Not set"}</p>
-                                          </div>
-                                          <div className="rounded-2xl bg-white px-4 py-3">
-                                            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Rolled back from</p>
-                                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                                              {version.rollbackFromVersion ? `Version ${version.rollbackFromVersion}` : "Not set"}
-                                            </p>
-                                          </div>
-                                        </div>
-
-                                        <div className="rounded-2xl bg-white px-4 py-3">
-                                          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
-                                          <p className="mt-1 text-sm leading-6 text-slate-700">
-                                            {version.notes || (version.rollbackFromVersion ? `Rolled back from version ${version.rollbackFromVersion}` : "No notes provided")}
-                                          </p>
-                                        </div>
-
-                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Snapshot</p>
-                                          <p className="mt-2 text-sm text-slate-600">
-                                            A readable summary of the version configuration.
-                                          </p>
-                                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                            {getVersionSnapshotSummary(version.jobSnapshot).map((item) => (
-                                              <div key={item.label} className="rounded-2xl bg-white px-4 py-3">
-                                                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{item.label}</p>
-                                                <p className="mt-1 text-sm font-semibold text-slate-900">{item.value}</p>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                          <p className="text-xs text-slate-500">
-                                            Version {version.version} details are loaded from the saved snapshot.
-                                          </p>
-                                          <button
-                                            type="button"
-                                            disabled={version.isCurrent || rollbackBusyVersion === version.version}
-                                            onClick={() => void handleRollback(version.version)}
-                                            className="inline-flex shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                          >
-                                            {rollbackBusyVersion === version.version ? "Rolling back..." : "Rollback"}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                        No version history returned yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Publish history</p>
-                      <h3 className="mt-2 text-xl font-semibold text-slate-900">Status changes for this job</h3>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      {publishHistory.length} events
-                    </span>
-                  </div>
-
-                  <div className="mt-5 space-y-3">
-                    {publishHistory.length ? (
-                      publishHistory.map((item) => (
-                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-slate-900">
-                              {item.fromStatus} → {item.toStatus}
-                            </p>
-                            {item.notes ? (
-                              <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                                notes
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {formatMaybeDate(item.changedAt)}
-                            {item.changedBy ? ` · ${item.changedBy}` : ""}
-                          </p>
-                          <p className="mt-2 text-sm text-slate-700">
-                            {item.notes || "No notes provided"}
-                          </p>
-                        </div>
+                      sortedVersions.map((version) => (
+                        <VersionHistoryItem
+                          key={version.id}
+                          version={version}
+                          isLatest={version.id === latestVersion?.id}
+                          isExpanded={Boolean(expandedVersionIds[version.id])}
+                          onToggleExpand={() => toggleVersionExpanded(version.id)}
+                          onRollback={(versionNumber) => void handleRollback(versionNumber)}
+                          rollbackBusy={rollbackBusyVersion === version.version}
+                          creatorLabel={creatorLabel}
+                        />
                       ))
                     ) : (
                       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                        No publish history returned yet.
+                        No version history returned yet.
                       </div>
                     )}
                   </div>

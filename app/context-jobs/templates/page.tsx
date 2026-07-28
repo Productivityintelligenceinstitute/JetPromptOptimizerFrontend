@@ -1,22 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AuthGuard from "@/shared/components/auth/AuthGuard";
 import {
   getContextJobsTemplates,
   instantiateContextJobTemplate,
+  setupProcurementDemo,
   type ContextJob,
 } from "@/shared/api/contextJobs";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
 import { storeContextJobDraft } from "@/shared/lib/contextJobsDraft";
+import {
+  LIFECYCLE_OVERVIEW,
+  PERSONA_META,
+  displayTemplateDescription,
+  groupTemplatesByFamily,
+  type TemplatePersona,
+} from "@/shared/lib/procurementTemplateCatalog";
 
-function formatMaybeDate(value: string | null | undefined): string {
-  if (!value) return "Not set";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
-}
+const PERSONA_ORDER: TemplatePersona[] = ["full", "executive", "scorecard"];
 
 function TemplateGalleryContent() {
   const router = useRouter();
@@ -24,7 +28,8 @@ function TemplateGalleryContent() {
   const [templates, setTemplates] = useState<ContextJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [launchingTemplateId, setLaunchingTemplateId] = useState<string | null>(null);
+  const [launchingKey, setLaunchingKey] = useState<string | null>(null);
+  const [personaByFamily, setPersonaByFamily] = useState<Record<string, TemplatePersona>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -74,21 +79,60 @@ function TemplateGalleryContent() {
     };
   }, [entitlements.contextJobsEnabled, entitlements.status]);
 
+  const families = useMemo(() => groupTemplatesByFamily(templates), [templates]);
+
+  const selectedPersona = (familyId: string, variants: Partial<Record<TemplatePersona, ContextJob>>): TemplatePersona => {
+    const preferred = personaByFamily[familyId];
+    if (preferred && variants[preferred]) return preferred;
+    for (const persona of PERSONA_ORDER) {
+      if (variants[persona]) return persona;
+    }
+    return "full";
+  };
+
   const handleUseTemplate = async (template: ContextJob): Promise<void> => {
     try {
-      setLaunchingTemplateId(template.id);
+      setLaunchingKey(`use:${template.id}`);
       setError(null);
       const draft = await instantiateContextJobTemplate(template.id);
-      storeContextJobDraft(draft, {
-        source: "template",
-        sourceId: template.id,
-        sourceLabel: template.name,
-      });
+      const { chainConfig: _removed, ...withoutChain } = draft;
+      storeContextJobDraft(
+        {
+          ...withoutChain,
+          status: "draft",
+        },
+        {
+          source: "template",
+          sourceId: template.id,
+          sourceLabel: template.name,
+        },
+      );
       router.push("/context-jobs/jobs/new");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to instantiate template");
     } finally {
-      setLaunchingTemplateId(null);
+      setLaunchingKey(null);
+    }
+  };
+
+  const handleDemoSetup = async (template: ContextJob): Promise<void> => {
+    try {
+      setLaunchingKey(`demo:${template.id}`);
+      setError(null);
+      const result = await setupProcurementDemo({
+        templateId: template.id,
+      });
+      if (result.ingestion.error || result.ingestion.status === "failed") {
+        setError(
+          result.ingestion.error ||
+            "Demo KB ingestion reported a failure. Job was created — open it to retry ingest.",
+        );
+      }
+      router.push(`/context-jobs/jobs/${result.job.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to set up demo with template");
+    } finally {
+      setLaunchingKey(null);
     }
   };
 
@@ -98,15 +142,37 @@ function TemplateGalleryContent() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_transparent_42%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_100%)]">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 sm:pt-28 pt-24">
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl space-y-3">
+          <div className="max-w-3xl space-y-3">
             <p className="inline-flex rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
-              Templates
+              Procurement flagship
             </p>
             <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
               Template gallery
             </h1>
             <p className="text-sm leading-6 text-slate-600 sm:text-base">
-              Pick a starting point, instantiate it into your workspace, and continue editing in the job builder.
+              Four governed procurement workflows — each with Full, Executive, and Scorecard output
+              personas. Pick a family, choose an audience, then instantiate into the builder or seed
+              the demo knowledge base for a guided pilot.
+            </p>
+            <p className="text-sm text-slate-500">
+              Lifecycle: Contract Review → Capability Matrix → Onboarding.{" "}
+              <Link
+                href="/context-jobs/procurement/alerts"
+                className="font-medium text-blue-700 underline-offset-2 hover:underline"
+              >
+                Renewal alerts
+              </Link>
+            </p>
+            <p className="max-w-3xl text-sm leading-6 text-slate-600">{LIFECYCLE_OVERVIEW}</p>
+            <p className="max-w-3xl text-sm leading-6 text-slate-600">
+              Runs retrieve evidence from the job&apos;s knowledge base (Jet managed or your external
+              vector connection). One KB can hold many contracts, policies, rate cards, and vendor
+              profiles across jobs — so when you ingest, stamp identifying metadata (for example{" "}
+              <span className="font-medium text-slate-800">contractId</span>,{" "}
+              <span className="font-medium text-slate-800">vendor</span>, or{" "}
+              <span className="font-medium text-slate-800">file</span>). Then scope a job with{" "}
+              <span className="font-medium text-slate-800">Trusted sources</span> using the same
+              metadata key and value so retrieval stays on the right documents.
             </p>
           </div>
 
@@ -150,57 +216,157 @@ function TemplateGalleryContent() {
             </div>
           </div>
         ) : hasAccess ? (
-          templates.length > 0 ? (
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {templates.map((template) => (
-                <article
-                  key={template.id}
-                  className="flex h-full flex-col rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">System template</p>
-                      <h2 className="text-2xl font-semibold tracking-tight text-slate-900">{template.name}</h2>
-                      <p className="text-sm leading-6 text-slate-600">
-                        {template.description || template.goal || "No template description is available yet."}
+          families.length > 0 ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {families.map(({ family, variants }) => {
+                const persona = selectedPersona(family.id, variants);
+                const selected = variants[persona];
+                const availablePersonas = PERSONA_ORDER.filter((p) => Boolean(variants[p]));
+                const showLifecycleGuide = persona === "full" && Boolean(family.lifecycleGuide);
+                const guide = family.lifecycleGuide;
+                const useBusy = launchingKey === `use:${selected?.id ?? ""}`;
+                const demoBusy = launchingKey === `demo:${selected?.id ?? ""}`;
+
+                return (
+                  <article
+                    key={family.id}
+                    className="flex h-full flex-col rounded-[2rem] border border-white/70 bg-white/95 p-6 shadow-sm backdrop-blur sm:p-8"
+                  >
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">
+                        System family
                       </p>
+                      <h2 className="text-2xl font-semibold tracking-tight text-slate-900">{family.title}</h2>
+                      <p className="text-sm leading-6 text-slate-600">{family.summary}</p>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      {template.status}
-                    </span>
-                  </div>
 
-                  <dl className="mt-6 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Workflow</dt>
-                      <dd className="mt-1 text-sm font-semibold text-slate-900">{template.workflowType}</dd>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Problem</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-800">{family.problem}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Outcome</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-800">{family.outcome}</p>
+                      </div>
                     </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Provider</dt>
-                      <dd className="mt-1 text-sm font-semibold text-slate-900">{template.executionProvider}</dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Model</dt>
-                      <dd className="mt-1 text-sm font-semibold text-slate-900">{template.executionModel}</dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Updated</dt>
-                      <dd className="mt-1 text-sm font-semibold text-slate-900">{formatMaybeDate(template.updatedAt)}</dd>
-                    </div>
-                  </dl>
 
-                  <div className="mt-auto flex flex-col gap-3 pt-6">
-                    <button
-                      type="button"
-                      onClick={() => void handleUseTemplate(template)}
-                      disabled={launchingTemplateId === template.id}
-                      className="inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {launchingTemplateId === template.id ? "Preparing..." : "Use template"}
-                    </button>
-                  </div>
-                </article>
-              ))}
+                    <div className="mt-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Needs</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {family.inputsNeeded.map((item) => (
+                          <span
+                            key={item}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700"
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                      {family.inputSetupNote ? (
+                        <p className="mt-3 text-sm leading-6 text-slate-600">{family.inputSetupNote}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-6">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Output persona</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {availablePersonas.map((p) => {
+                          const meta = PERSONA_META[p];
+                          const active = p === persona;
+                          return (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() =>
+                                setPersonaByFamily((prev) => ({
+                                  ...prev,
+                                  [family.id]: p,
+                                }))
+                              }
+                              className={`rounded-full px-4 py-2 text-left text-sm transition-colors ${
+                                active
+                                  ? "bg-slate-900 text-white"
+                                  : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                              }`}
+                            >
+                              <span className="block font-semibold">{meta.label}</span>
+                              <span className={`block text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>
+                                {meta.forWhom}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">{PERSONA_META[persona].hint}</p>
+                    </div>
+
+                    {selected ? (
+                      <p className="mt-4 text-sm leading-6 text-slate-600">
+                        {displayTemplateDescription(selected.description, selected.goal)}
+                      </p>
+                    ) : (
+                      <p className="mt-4 text-sm text-amber-800">This persona is not available in the template set yet.</p>
+                    )}
+
+                    {showLifecycleGuide && guide ? (
+                      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                        <p className="font-semibold text-slate-900">
+                          Lifecycle next: {guide.nextJobName}
+                        </p>
+                        <p className="mt-2 leading-6 text-slate-600">
+                          After this job finishes, continue the lifecycle manually — no automatic handoff.
+                          Put only the useful pieces from this result into the next job&apos;s User request,
+                          then add that job&apos;s Needs in the request or knowledge base and run it.
+                        </p>
+                        <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Carry into next User request
+                        </p>
+                        <ul className="mt-1 list-disc space-y-1 pl-5 text-slate-700">
+                          {guide.carryFromResult.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                        <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Next job needs
+                        </p>
+                        <ul className="mt-1 list-disc space-y-1 pl-5 text-slate-700">
+                          {guide.nextNeeds.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : family.lifecycleGuide ? (
+                      <p className="mt-5 text-sm text-slate-500">
+                        Lifecycle next-step guidance is shown on the{" "}
+                        <span className="font-semibold text-slate-800">Full / Analyst</span> persona
+                        (→ {family.lifecycleGuide.nextJobName}).
+                      </p>
+                    ) : null}
+
+                    <p className="mt-4 text-xs leading-5 text-slate-500">{family.demoHint}</p>
+
+                    <div className="mt-auto flex flex-col gap-3 pt-6 sm:flex-row">
+                      <button
+                        type="button"
+                        disabled={!selected || Boolean(launchingKey)}
+                        onClick={() => selected && void handleUseTemplate(selected)}
+                        className="inline-flex flex-1 items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {useBusy ? "Preparing..." : "Use template"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!selected || Boolean(launchingKey)}
+                        onClick={() => selected && void handleDemoSetup(selected)}
+                        className="inline-flex flex-1 items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {demoBusy ? "Seeding demo KB..." : "Use with demo KB"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-3xl border border-white/70 bg-white/90 p-8 shadow-sm backdrop-blur">

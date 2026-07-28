@@ -6,16 +6,23 @@ import { useParams, useRouter } from "next/navigation";
 import AuthGuard from "@/shared/components/auth/AuthGuard";
 import {
   confirmContextJobMemoryChanges,
+  downloadContextJobRunArtifact,
   getContextJob,
   getContextJobRun,
+  getContextJobRunArtifacts,
+  getContextJobRunChain,
   getContextJobRunPendingApprovals,
   replayContextJobRun,
   submitContextJobToolApproval,
   type ContextJob,
   type ContextJobRun,
   type ContextJobsPendingToolApproval,
+  type ContextJobsRunArtifact,
+  type ContextJobsRunChain,
+  type ContextJobsRunChainNode,
   type ContextJobsRunOutputPackage,
 } from "@/shared/api/contextJobs";
+import { StructuredRunResult } from "@/shared/components/context-jobs/StructuredRunResult";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
 
 const terminalStates = new Set([
@@ -117,6 +124,106 @@ function getResultPreviewText(content: string): string {
   return plainText.length > 220 ? `${plainText.slice(0, 220).trimEnd()}...` : plainText;
 }
 
+function formatBytes(value: number | null | undefined): string {
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) {
+    return "Unknown size";
+  }
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatEventLabel(event: unknown, index: number): string {
+  if (!event || typeof event !== "object" || Array.isArray(event)) {
+    return `Event ${index + 1}`;
+  }
+
+  const record = event as Record<string, unknown>;
+  const candidates = [record.step, record.name, record.type, record.toolId, record.tool_id, record.phase, record.event];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+  }
+
+  return `Event ${index + 1}`;
+}
+
+function formatEventDetail(event: unknown): string {
+  if (event == null) return "No details";
+  if (typeof event === "string") return event;
+  try {
+    return JSON.stringify(event, null, 2);
+  } catch {
+    return String(event);
+  }
+}
+
+function ChainNodeCard({ node, depth = 0 }: { node: ContextJobsRunChainNode; depth?: number }) {
+  return (
+    <div className={depth > 0 ? "ml-4 border-l border-slate-200 pl-4" : ""}>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/context-jobs/runs/${node.runId}`}
+            className="text-sm font-semibold text-teal-700 hover:underline"
+          >
+            {node.jobName || `Run ${node.runId.slice(0, 8)}`}
+          </Link>
+          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
+            {node.status.replace(/_/g, " ")}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          {formatDate(node.createdAt)} · {node.runId}
+        </p>
+      </div>
+      {(node.childRuns ?? []).map((child) => (
+        <div key={child.runId} className="mt-3">
+          <ChainNodeCard node={child} depth={depth + 1} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TracePanel({
+  title,
+  events,
+}: {
+  title: string;
+  events: unknown[] | null | undefined;
+}) {
+  const items = Array.isArray(events) ? events : [];
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-900">{title}</p>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+          {items.length}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-500">No events recorded.</p>
+      ) : (
+        <div className="mt-3 max-h-72 space-y-2 overflow-auto">
+          {items.map((event, index) => (
+            <details key={`${title}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <summary className="cursor-pointer text-sm font-medium text-slate-800">
+                {formatEventLabel(event, index)}
+              </summary>
+              <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                {formatEventDetail(event)}
+              </pre>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function valueToText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -141,6 +248,30 @@ function getCheckSummary(check: Record<string, unknown>): string {
     valueToText(check.status) ||
     "No details were provided."
   );
+}
+
+function getCheckResultMeta(result: string): { label: string; className: string } {
+  const normalized = result.trim().toLowerCase();
+  if (normalized === "passed" || normalized === "pass") {
+    return { label: "Passed", className: "bg-emerald-100 text-emerald-800" };
+  }
+  if (normalized === "warning") {
+    return { label: "Warning", className: "bg-amber-100 text-amber-800" };
+  }
+  if (normalized === "failed" || normalized === "fail") {
+    return { label: "Failed", className: "bg-rose-100 text-rose-800" };
+  }
+  return { label: result || "Unknown", className: "bg-slate-100 text-slate-700" };
+}
+
+function formatCheckJson(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
 
 function escapeHtml(value: string): string {
@@ -292,15 +423,28 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
   const [isReplaying, setIsReplaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pollWarning, setPollWarning] = useState<string | null>(null);
+  const [chain, setChain] = useState<ContextJobsRunChain | null>(null);
+  const [artifacts, setArtifacts] = useState<ContextJobsRunArtifact[]>([]);
+  const [chainError, setChainError] = useState<string | null>(null);
+  const [artifactsError, setArtifactsError] = useState<string | null>(null);
+  const [downloadBusyPath, setDownloadBusyPath] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const timerRef = useRef<number | null>(null);
+  const loadInFlightRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
 
   const loadRun = useCallback(async (): Promise<void> => {
+    if (loadInFlightRef.current) {
+      return;
+    }
+    loadInFlightRef.current = true;
     try {
       const runData = await getContextJobRun(runId);
       if (!mountedRef.current) return;
 
       setRun(runData);
+      hasLoadedOnceRef.current = true;
 
       if (runData.job) {
         setJob(runData.job);
@@ -336,10 +480,19 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
       }
 
       setError(null);
+      setPollWarning(null);
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "Failed to load run");
+      const message = err instanceof Error ? err.message : "Failed to load run";
+      // Transient poll failures (timeouts while worker holds DB) must not look like a failed run.
+      if (hasLoadedOnceRef.current) {
+        setPollWarning("Live refresh delayed — retrying. The run may still be processing.");
+        setError(null);
+      } else {
+        setError(message);
+      }
     } finally {
+      loadInFlightRef.current = false;
       if (mountedRef.current) {
         setIsLoading(false);
       }
@@ -348,6 +501,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
 
   useEffect(() => {
     mountedRef.current = true;
+    hasLoadedOnceRef.current = false;
 
     void loadRun();
     timerRef.current = window.setInterval(() => {
@@ -369,7 +523,68 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
     }
   }, [run]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadExtras = async () => {
+      try {
+        const chainData = await getContextJobRunChain(runId);
+        if (!cancelled) {
+          setChain(chainData);
+          setChainError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setChain(null);
+          setChainError(err instanceof Error ? err.message : "Failed to load chain");
+        }
+      }
+
+      try {
+        const artifactsData = await getContextJobRunArtifacts(runId);
+        if (!cancelled) {
+          setArtifacts(artifactsData.artifacts);
+          setArtifactsError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setArtifacts([]);
+          setArtifactsError(err instanceof Error ? err.message : "Failed to load artifacts");
+        }
+      }
+    };
+
+    void loadExtras();
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, run?.state, run?.endedAt]);
+
+  const handleArtifactDownload = async (artifact: ContextJobsRunArtifact) => {
+    setDownloadBusyPath(artifact.path);
+    setError(null);
+    try {
+      const blob = await downloadContextJobRunArtifact(runId, artifact.path);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const fileName = artifact.path.split("/").pop() || artifact.path;
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download artifact");
+    } finally {
+      setDownloadBusyPath(null);
+    }
+  };
+
   const meta = useMemo(() => getStateMeta(run?.state || "queued"), [run?.state]);
+  const hasChainLinks = Boolean(
+    chain && (chain.parentRun || (chain.childRuns && chain.childRuns.length > 0)),
+  );
   const isLive = run ? !terminalStates.has(run.state) : false;
   const jobLabel = job?.name || run?.job?.name || (run?.jobId ? `Job ${run.jobId.slice(0, 8)}` : "Context Job");
   const resultContent = getResultContent(run?.runOutputPackage, run);
@@ -496,6 +711,12 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
           </div>
         )}
 
+        {pollWarning && !error ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            <p className="text-sm font-medium">{pollWarning}</p>
+          </div>
+        ) : null}
+
         {isLoading || entitlements.status === "loading" ? (
           <div className="flex items-center justify-center rounded-3xl border border-white/70 bg-white/80 py-16 shadow-sm backdrop-blur">
             <div className="text-center">
@@ -608,10 +829,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                       </div>
                     </div>
                   ) : (
-                    <div
-                      className="space-y-4 text-sm"
-                      dangerouslySetInnerHTML={{ __html: renderedResultContent }}
-                    />
+                    <StructuredRunResult content={resultContent} renderedHtml={renderedResultContent} />
                   )}
                 </div>
 
@@ -628,14 +846,53 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                         <p className="mt-1 text-sm font-semibold text-slate-900">{validationSummary.confidenceLevel || "Not set"}</p>
                       </div>
                     </div>
+                    {validationSummary.repairReason ? (
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                        <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Repair reason</p>
+                        <p className="mt-1 leading-6">{validationSummary.repairReason}</p>
+                      </div>
+                    ) : null}
                     {Array.isArray(validationSummary.checks) && validationSummary.checks.length ? (
                       <div className="mt-4 space-y-2">
-                        {validationSummary.checks.slice(0, 6).map((check, index) => (
-                          <div key={`${String(check.name ?? "check")}-${index}`} className="rounded-2xl bg-slate-50 px-4 py-3">
-                            <p className="text-sm font-semibold text-slate-900">{getCheckTitle(check, index)}</p>
-                            <p className="mt-1 text-xs text-slate-500">{getCheckSummary(check)}</p>
-                          </div>
-                        ))}
+                        {validationSummary.checks.map((check, index) => {
+                          const result = valueToText(check.result) || valueToText(check.status);
+                          const resultMeta = getCheckResultMeta(result);
+                          const checker = valueToText(check.checker);
+                          const ruleType = valueToText(check.type);
+                          const expected = formatCheckJson(check.expected);
+                          const found = formatCheckJson(check.found);
+                          const isProcurement = ruleType === "procurement" || Boolean(checker);
+                          return (
+                            <div key={`${String(check.name ?? "check")}-${index}`} className="rounded-2xl bg-slate-50 px-4 py-3">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900">{getCheckTitle(check, index)}</p>
+                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${resultMeta.className}`}>
+                                  {resultMeta.label}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">{getCheckSummary(check)}</p>
+                              {isProcurement ? (
+                                <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                    Procurement check{checker ? `: ${checker}` : ""}
+                                  </p>
+                                  {expected ? (
+                                    <div>
+                                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Expected</p>
+                                      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-[11px] leading-5 text-slate-700">{expected}</pre>
+                                    </div>
+                                  ) : null}
+                                  {found ? (
+                                    <div>
+                                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Found</p>
+                                      <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-[11px] leading-5 text-slate-700">{found}</pre>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : null}
                   </div>
@@ -776,9 +1033,97 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Workspace</p>
                       <p className="mt-1 text-sm font-semibold text-slate-900">{run.workspaceId || "Not set"}</p>
                     </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Plan</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">{entitlements.plan || "Not set"}</p>
+                    </div>
                   </div>
                 </div>
+
+                <div className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Artifacts</p>
+                  {artifactsError ? (
+                    <p className="mt-3 text-sm text-rose-700">{artifactsError}</p>
+                  ) : artifacts.length === 0 ? (
+                    <p className="mt-3 text-sm text-slate-500">No downloadable artifacts for this run.</p>
+                  ) : (
+                    <div className="mt-4 space-y-2">
+                      {artifacts.map((artifact) => (
+                        <div
+                          key={artifact.path}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                        >
+                          <p className="truncate text-sm font-semibold text-slate-900">{artifact.path}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatBytes(artifact.sizeBytes)}
+                            {artifact.mimeType ? ` · ${artifact.mimeType}` : ""}
+                            {artifact.toolId ? ` · ${artifact.toolId}` : ""}
+                          </p>
+                          <button
+                            type="button"
+                            disabled={downloadBusyPath === artifact.path}
+                            onClick={() => void handleArtifactDownload(artifact)}
+                            className="mt-3 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {downloadBusyPath === artifact.path ? "Downloading..." : "Download"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </aside>
+            </section>
+
+            <section className="grid gap-4 xl:grid-cols-2">
+              <div className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Execution trace</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">Steps, tools, and validation</h3>
+                <div className="mt-5 grid gap-4">
+                  <TracePanel title="Step logs" events={run.stepLogs} />
+                  <TracePanel title="Tool events" events={run.toolEvents} />
+                  <TracePanel title="Retrieval events" events={run.retrievalEvents} />
+                  <TracePanel title="Validation events" events={run.validationEvents} />
+                  <TracePanel title="Source trace" events={run.sourceTraceEvents} />
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Run chain</p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">Parent and child runs</h3>
+                {chainError ? (
+                  <p className="mt-4 text-sm text-rose-700">{chainError}</p>
+                ) : !hasChainLinks ? (
+                  <p className="mt-4 text-sm leading-6 text-slate-600">
+                    This run is not linked to a parent or child chain.
+                  </p>
+                ) : (
+                  <div className="mt-5 space-y-4">
+                    {chain?.parentRun ? (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Parent</p>
+                        <ChainNodeCard node={chain.parentRun} />
+                      </div>
+                    ) : null}
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">This run</p>
+                      <div className="rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-900">
+                        {jobLabel} · {run.id}
+                      </div>
+                    </div>
+                    {(chain?.childRuns?.length ?? 0) > 0 ? (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Children</p>
+                        <div className="space-y-3">
+                          {chain?.childRuns.map((child) => (
+                            <ChainNodeCard key={child.runId} node={child} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
             </section>
           </div>
         ) : (

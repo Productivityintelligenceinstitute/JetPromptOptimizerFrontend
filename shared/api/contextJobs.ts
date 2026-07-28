@@ -17,6 +17,7 @@ export interface ContextJobsProvider {
 export interface ContextJobsLlmKey {
   id: string;
   provider?: string | null;
+  keyPurpose?: string | null;
   keyLabel?: string | null;
   label?: string | null;
   name?: string | null;
@@ -97,6 +98,7 @@ export interface ContextJobsLlmKeyCreateRequest {
   provider: string;
   keyLabel: string;
   apiKey: string;
+  keyPurpose?: "llm" | "embedding" | "both";
 }
 
 export interface ContextJobsToolKeyCreateRequest {
@@ -106,13 +108,89 @@ export interface ContextJobsToolKeyCreateRequest {
   apiKey: string;
 }
 
+export const CONTEXT_JOB_ASSET_TYPES = [
+  "policy",
+  "retrieval_profile",
+  "validation_contract",
+  "memory_policy",
+  "style_guide",
+  "tool_profile",
+  "glossary",
+  "source_profile",
+  "relationship_pattern",
+] as const;
+
+export type ContextJobAssetType = (typeof CONTEXT_JOB_ASSET_TYPES)[number];
+
 export interface ContextJobAsset {
   id: string;
   name: string;
   type: string;
   description?: string | null;
   content?: Record<string, unknown> | string | null;
+  version?: number | null;
   status?: string | null;
+  owner?: string | null;
+  workspaceId?: string | null;
+  approvalStatus?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ContextJobAssetCreateRequest {
+  name: string;
+  type: string;
+  description?: string | null;
+  content?: Record<string, unknown> | null;
+  version?: number;
+  status?: string;
+  approvalStatus?: string;
+}
+
+export type ContextJobAssetUpdateRequest = Partial<ContextJobAssetCreateRequest>;
+
+export interface ContextJobsProcurementAlert {
+  id: string;
+  owner?: string | null;
+  workspaceId?: string | null;
+  vendor?: string | null;
+  contractDocumentId: string;
+  expiryDate: string;
+  complexityTier: string;
+  leadMonthsThreshold: number;
+  complexityTierDefaulted: boolean;
+  description?: string | null;
+  alertedAt: string;
+  dismissed: boolean;
+  suggestedJobId?: string | null;
+}
+
+export interface ContextJobsRunArtifact {
+  path: string;
+  sizeBytes?: number | null;
+  mimeType?: string | null;
+  toolId?: string | null;
+}
+
+export interface ContextJobsRunArtifacts {
+  runId: string;
+  artifacts: ContextJobsRunArtifact[];
+}
+
+export interface ContextJobsRunChainNode {
+  runId: string;
+  jobId: string;
+  jobName?: string | null;
+  status: string;
+  createdAt?: string | null;
+  childRuns?: ContextJobsRunChainNode[];
+}
+
+export interface ContextJobsRunChain {
+  runId: string;
+  parentRunId?: string | null;
+  parentRun?: ContextJobsRunChainNode | null;
+  childRuns: ContextJobsRunChainNode[];
 }
 
 export interface ContextJobsLimits {
@@ -132,6 +210,7 @@ export interface ContextJobsEntitlements {
   message: string | null;
   upgradeRequired: string | null;
   keyMode: string | null;
+  canManageKeys?: boolean | null;
   limits: ContextJobsLimits | null;
   usage: ContextJobsUsage | null;
   canCreateJob: boolean;
@@ -162,6 +241,7 @@ export interface ContextJob {
   relationships: unknown[] | null;
   trustedSources: unknown[] | null;
   chainConfig: Record<string, unknown> | null;
+  linkedChildJobId: string | null;
   version: number;
   approvalRequired: boolean;
   policyProfile: string | null;
@@ -217,6 +297,7 @@ export interface ContextJobsRunOutputPackage {
   validationSummary?: {
     overallDecision?: string | null;
     confidenceLevel?: string | null;
+    repairReason?: string | null;
     checks?: Array<Record<string, unknown>>;
   } | null;
   nextAction?: {
@@ -401,6 +482,13 @@ function normalizeContextJob(job: unknown): ContextJob {
   }
 
   const record = job as Record<string, unknown>;
+  const rawAssetIds =
+    (Array.isArray(record.assetIds) && record.assetIds) ||
+    (Array.isArray(record.asset_ids) && record.asset_ids) ||
+    (Array.isArray(record.linkedAssetIds) && record.linkedAssetIds) ||
+    (Array.isArray(record.linked_asset_ids) && record.linked_asset_ids) ||
+    [];
+
   return {
     ...(record as unknown as ContextJob),
     createdAt:
@@ -411,6 +499,13 @@ function normalizeContextJob(job: unknown): ContextJob {
       (typeof record.updatedAt === "string" && record.updatedAt) ||
       (typeof record.updated_at === "string" && record.updated_at) ||
       "",
+    linkedChildJobId:
+      (typeof record.linkedChildJobId === "string" && record.linkedChildJobId) ||
+      (typeof record.linked_child_job_id === "string" && record.linked_child_job_id) ||
+      null,
+    assetIds: rawAssetIds
+      .map((item) => String(item || "").trim())
+      .filter(Boolean),
   };
 }
 
@@ -436,11 +531,45 @@ export const getContextJob = async (jobId: string): Promise<ContextJob> => {
   }
 };
 
-export const getContextJobsLlmKeys = async (provider?: string): Promise<ContextJobsLlmKey[]> => {
+export interface ContextJobPendingHandoff {
+  parentRunId: string;
+  childJobId: string;
+  suggestedUserRequest: string;
+  label?: string | null;
+  status: string;
+}
+
+export const getContextJobPendingHandoff = async (
+  jobId: string,
+  parentRunId?: string | null
+): Promise<ContextJobPendingHandoff | null> => {
+  try {
+    const params = parentRunId ? `?parentRunId=${encodeURIComponent(parentRunId)}` : "";
+    const response = await apiClient.get<ContextJobPendingHandoff>(
+      `/context-jobs/jobs/${jobId}/pending-handoff${params}`
+    );
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    if (normalizedError.statusCode === 404) {
+      return null;
+    }
+    logError(normalizedError, "getContextJobPendingHandoff");
+    throw normalizedError;
+  }
+};
+
+export const getContextJobsLlmKeys = async (
+  provider?: string,
+  purpose?: "llm" | "embedding" | "both",
+): Promise<ContextJobsLlmKey[]> => {
   try {
     const params = new URLSearchParams();
     if (provider) {
       params.set("provider", provider);
+    }
+    if (purpose) {
+      params.set("purpose", purpose);
     }
 
     const response = await apiClient.get<unknown>(
@@ -495,12 +624,16 @@ export const ingestContextJob = async (
 export const ingestContextJobUpload = async (
   jobId: string,
   files: File[],
+  metadata?: Record<string, string>,
 ): Promise<ContextJobIngestionUploadResponse> => {
   try {
     const formData = new FormData();
     files.forEach((file) => {
       formData.append("files", file);
     });
+    if (metadata && Object.keys(metadata).length > 0) {
+      formData.append("metadataJson", JSON.stringify(metadata));
+    }
 
     const response = await apiClient.post<ContextJobIngestionUploadResponse>(`/context-jobs/jobs/${jobId}/ingest/upload`, formData, {
       timeout: 120000,
@@ -527,10 +660,63 @@ export const getContextJobsTemplates = async (): Promise<ContextJob[]> => {
 export const instantiateContextJobTemplate = async (templateId: string): Promise<Record<string, unknown>> => {
   try {
     const response = await apiClient.post<Record<string, unknown>>(`/context-jobs/templates/${templateId}/instantiate`);
+    const { refreshContextJobsEntitlements } = await import("@/shared/lib/refreshContextJobsEntitlements");
+    void refreshContextJobsEntitlements();
     return response.data;
   } catch (error) {
     const normalizedError = normalizeError(error);
     logError(normalizedError, "instantiateContextJobTemplate");
+    throw normalizedError;
+  }
+};
+
+export type ProcurementDemoSetupResponse = {
+  job: ContextJob;
+  ingestion: {
+    status: string;
+    outcome: string;
+    upsertedCount?: number;
+    failedCount?: number;
+    warnings?: string[];
+    error?: string | null;
+    ingestedSources?: Array<Record<string, unknown>>;
+  };
+};
+
+export const setupProcurementDemo = async (payload: {
+  templateId: string;
+}): Promise<ProcurementDemoSetupResponse> => {
+  try {
+    const response = await apiClient.post<Record<string, unknown>>(
+      "/context-jobs/procurement/demo-setup",
+      {
+        templateId: payload.templateId,
+      },
+      { timeout: 180000 },
+    );
+    const data = response.data ?? {};
+    const ingestionRaw = (data.ingestion ?? {}) as Record<string, unknown>;
+    const { refreshContextJobsEntitlements } = await import("@/shared/lib/refreshContextJobsEntitlements");
+    void refreshContextJobsEntitlements();
+    return {
+      job: normalizeContextJob(data.job),
+      ingestion: {
+        status: String(ingestionRaw.status ?? ""),
+        outcome: String(ingestionRaw.outcome ?? ""),
+        upsertedCount: Number(ingestionRaw.upsertedCount ?? ingestionRaw.upserted_count ?? 0),
+        failedCount: Number(ingestionRaw.failedCount ?? ingestionRaw.failed_count ?? 0),
+        warnings: Array.isArray(ingestionRaw.warnings) ? (ingestionRaw.warnings as string[]) : [],
+        error: (ingestionRaw.error as string | null | undefined) ?? null,
+        ingestedSources: Array.isArray(ingestionRaw.ingestedSources)
+          ? (ingestionRaw.ingestedSources as Array<Record<string, unknown>>)
+          : Array.isArray(ingestionRaw.ingested_sources)
+            ? (ingestionRaw.ingested_sources as Array<Record<string, unknown>>)
+            : [],
+      },
+    };
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "setupProcurementDemo");
     throw normalizedError;
   }
 };
@@ -609,13 +795,267 @@ export const getContextJobsVectorConnections = async (): Promise<ContextJobsVect
   }
 };
 
+function normalizeContextJobAsset(asset: unknown): ContextJobAsset {
+  if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
+    return asset as ContextJobAsset;
+  }
+
+  const record = asset as Record<string, unknown>;
+  return {
+    ...(record as unknown as ContextJobAsset),
+    workspaceId:
+      (typeof record.workspaceId === "string" && record.workspaceId) ||
+      (typeof record.workspace_id === "string" && record.workspace_id) ||
+      null,
+    approvalStatus:
+      (typeof record.approvalStatus === "string" && record.approvalStatus) ||
+      (typeof record.approval_status === "string" && record.approval_status) ||
+      null,
+    createdAt:
+      (typeof record.createdAt === "string" && record.createdAt) ||
+      (typeof record.created_at === "string" && record.created_at) ||
+      null,
+    updatedAt:
+      (typeof record.updatedAt === "string" && record.updatedAt) ||
+      (typeof record.updated_at === "string" && record.updated_at) ||
+      null,
+  };
+}
+
 export const getContextJobsAssets = async (): Promise<ContextJobAsset[]> => {
   try {
     const response = await apiClient.get<unknown>("/context-jobs/assets");
-    return normalizeListResponse<ContextJobAsset>(response.data);
+    return normalizeListResponse<ContextJobAsset>(response.data).map(normalizeContextJobAsset);
   } catch (error) {
     const normalizedError = normalizeError(error);
     logError(normalizedError, "getContextJobsAssets");
+    throw normalizedError;
+  }
+};
+
+export const createContextJobsAsset = async (
+  payload: ContextJobAssetCreateRequest,
+): Promise<ContextJobAsset> => {
+  try {
+    const response = await apiClient.post<ContextJobAsset>("/context-jobs/assets", payload);
+    return normalizeContextJobAsset(response.data);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "createContextJobsAsset");
+    throw normalizedError;
+  }
+};
+
+export const updateContextJobsAsset = async (
+  assetId: string,
+  payload: ContextJobAssetUpdateRequest,
+): Promise<ContextJobAsset> => {
+  try {
+    const response = await apiClient.patch<ContextJobAsset>(`/context-jobs/assets/${assetId}`, payload);
+    return normalizeContextJobAsset(response.data);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "updateContextJobsAsset");
+    throw normalizedError;
+  }
+};
+
+export const deleteContextJobsAsset = async (assetId: string): Promise<void> => {
+  try {
+    await apiClient.delete(`/context-jobs/assets/${assetId}`);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "deleteContextJobsAsset");
+    throw normalizedError;
+  }
+};
+
+function normalizeProcurementAlert(alert: unknown): ContextJobsProcurementAlert {
+  if (!alert || typeof alert !== "object" || Array.isArray(alert)) {
+    return alert as ContextJobsProcurementAlert;
+  }
+
+  const record = alert as Record<string, unknown>;
+  return {
+    ...(record as unknown as ContextJobsProcurementAlert),
+    workspaceId:
+      (typeof record.workspaceId === "string" && record.workspaceId) ||
+      (typeof record.workspace_id === "string" && record.workspace_id) ||
+      null,
+    contractDocumentId:
+      (typeof record.contractDocumentId === "string" && record.contractDocumentId) ||
+      (typeof record.contract_document_id === "string" && record.contract_document_id) ||
+      "",
+    expiryDate:
+      (typeof record.expiryDate === "string" && record.expiryDate) ||
+      (typeof record.expiry_date === "string" && record.expiry_date) ||
+      "",
+    complexityTier:
+      (typeof record.complexityTier === "string" && record.complexityTier) ||
+      (typeof record.complexity_tier === "string" && record.complexity_tier) ||
+      "",
+    leadMonthsThreshold:
+      (typeof record.leadMonthsThreshold === "number" && record.leadMonthsThreshold) ||
+      (typeof record.lead_months_threshold === "number" && record.lead_months_threshold) ||
+      0,
+    complexityTierDefaulted: Boolean(
+      record.complexityTierDefaulted ?? record.complexity_tier_defaulted ?? false,
+    ),
+    description:
+      (typeof record.description === "string" && record.description) || null,
+    alertedAt:
+      (typeof record.alertedAt === "string" && record.alertedAt) ||
+      (typeof record.alerted_at === "string" && record.alerted_at) ||
+      "",
+    suggestedJobId:
+      (typeof record.suggestedJobId === "string" && record.suggestedJobId) ||
+      (typeof record.suggested_job_id === "string" && record.suggested_job_id) ||
+      null,
+  };
+}
+
+export type ProcurementContractRegisterResponse = {
+  contractDocumentId: string;
+  expiryDate: string;
+  vendor?: string | null;
+  description?: string | null;
+  complexityTier: string;
+  namespace: string;
+  ingestionStatus: string;
+  upsertedCount: number;
+  warnings: string[];
+  message: string;
+};
+
+export const registerProcurementAlertContract = async (payload: {
+  file?: File | null;
+  contractText?: string;
+  expiryDate: string;
+  description: string;
+  vendor?: string;
+  contractId?: string;
+  complexityTier?: string;
+}): Promise<ProcurementContractRegisterResponse> => {
+  try {
+    const form = new FormData();
+    form.append("expiryDate", payload.expiryDate);
+    form.append("description", payload.description);
+    if (payload.vendor?.trim()) form.append("vendor", payload.vendor.trim());
+    if (payload.contractId?.trim()) form.append("contractId", payload.contractId.trim());
+    if (payload.complexityTier?.trim()) form.append("complexityTier", payload.complexityTier.trim());
+    if (payload.contractText?.trim()) form.append("contractText", payload.contractText.trim());
+    if (payload.file) form.append("file", payload.file);
+
+    const response = await apiClient.post<Record<string, unknown>>(
+      "/context-jobs/procurement/alerts/register-contract",
+      form,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    const data = response.data || {};
+    return {
+      contractDocumentId: String(data.contractDocumentId ?? data.contract_document_id ?? ""),
+      expiryDate: String(data.expiryDate ?? data.expiry_date ?? ""),
+      vendor: (data.vendor as string | null | undefined) ?? null,
+      description: (data.description as string | null | undefined) ?? null,
+      complexityTier: String(data.complexityTier ?? data.complexity_tier ?? "medium"),
+      namespace: String(data.namespace ?? ""),
+      ingestionStatus: String(data.ingestionStatus ?? data.ingestion_status ?? ""),
+      upsertedCount: Number(data.upsertedCount ?? data.upserted_count ?? 0),
+      warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
+      message: String(data.message ?? ""),
+    };
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "registerProcurementAlertContract");
+    throw normalizedError;
+  }
+};
+
+export const getContextJobsProcurementAlerts = async (): Promise<ContextJobsProcurementAlert[]> => {
+  try {
+    const response = await apiClient.get<unknown>("/context-jobs/procurement/alerts");
+    return normalizeListResponse<ContextJobsProcurementAlert>(response.data).map(normalizeProcurementAlert);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "getContextJobsProcurementAlerts");
+    throw normalizedError;
+  }
+};
+
+export const dismissContextJobsProcurementAlert = async (
+  alertId: string,
+): Promise<ContextJobsProcurementAlert> => {
+  try {
+    const response = await apiClient.post<ContextJobsProcurementAlert>(
+      `/context-jobs/procurement/alerts/${alertId}/dismiss`,
+    );
+    return normalizeProcurementAlert(response.data);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "dismissContextJobsProcurementAlert");
+    throw normalizedError;
+  }
+};
+
+function normalizeRunArtifact(artifact: unknown): ContextJobsRunArtifact {
+  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) {
+    return artifact as ContextJobsRunArtifact;
+  }
+
+  const record = artifact as Record<string, unknown>;
+  return {
+    path: typeof record.path === "string" ? record.path : "",
+    sizeBytes:
+      (typeof record.sizeBytes === "number" && record.sizeBytes) ||
+      (typeof record.size_bytes === "number" && record.size_bytes) ||
+      null,
+    mimeType:
+      (typeof record.mimeType === "string" && record.mimeType) ||
+      (typeof record.mime_type === "string" && record.mime_type) ||
+      null,
+    toolId:
+      (typeof record.toolId === "string" && record.toolId) ||
+      (typeof record.tool_id === "string" && record.tool_id) ||
+      null,
+  };
+}
+
+export const getContextJobRunArtifacts = async (runId: string): Promise<ContextJobsRunArtifacts> => {
+  try {
+    const response = await apiClient.get<Record<string, unknown>>(`/context-jobs/runs/${runId}/artifacts`);
+    const data = response.data ?? {};
+    const artifactsRaw = Array.isArray(data.artifacts) ? data.artifacts : [];
+    return {
+      runId:
+        (typeof data.runId === "string" && data.runId) ||
+        (typeof data.run_id === "string" && data.run_id) ||
+        runId,
+      artifacts: artifactsRaw.map(normalizeRunArtifact).filter((item) => item.path),
+    };
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "getContextJobRunArtifacts");
+    throw normalizedError;
+  }
+};
+
+export const downloadContextJobRunArtifact = async (
+  runId: string,
+  artifactPath: string,
+): Promise<Blob> => {
+  try {
+    const encodedPath = artifactPath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    const response = await apiClient.get<Blob>(
+      `/context-jobs/runs/${runId}/artifacts/${encodedPath}`,
+      { responseType: "blob" },
+    );
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "downloadContextJobRunArtifact");
     throw normalizedError;
   }
 };
@@ -727,6 +1167,8 @@ export const deleteContextJobsToolKey = async (keyId: string): Promise<void> => 
 export const createContextJob = async (payload: ContextJobMutationPayload): Promise<ContextJob> => {
   try {
     const response = await apiClient.post<ContextJob>("/context-jobs/jobs", payload);
+    const { refreshContextJobsEntitlements } = await import("@/shared/lib/refreshContextJobsEntitlements");
+    void refreshContextJobsEntitlements();
     return normalizeContextJob(response.data);
   } catch (error) {
     const normalizedError = normalizeError(error);
@@ -846,10 +1288,69 @@ export const confirmContextJobMemoryChanges = async (
   }
 };
 
-export const getContextJobRunChain = async (runId: string): Promise<Record<string, unknown>> => {
+function normalizeRunChainNode(node: unknown): ContextJobsRunChainNode {
+  if (!node || typeof node !== "object" || Array.isArray(node)) {
+    return {
+      runId: "",
+      jobId: "",
+      status: "unknown",
+      childRuns: [],
+    };
+  }
+
+  const record = node as Record<string, unknown>;
+  const childRaw = Array.isArray(record.childRuns)
+    ? record.childRuns
+    : Array.isArray(record.child_runs)
+      ? record.child_runs
+      : [];
+
+  return {
+    runId:
+      (typeof record.runId === "string" && record.runId) ||
+      (typeof record.run_id === "string" && record.run_id) ||
+      "",
+    jobId:
+      (typeof record.jobId === "string" && record.jobId) ||
+      (typeof record.job_id === "string" && record.job_id) ||
+      "",
+    jobName:
+      (typeof record.jobName === "string" && record.jobName) ||
+      (typeof record.job_name === "string" && record.job_name) ||
+      null,
+    status: typeof record.status === "string" ? record.status : "unknown",
+    createdAt:
+      (typeof record.createdAt === "string" && record.createdAt) ||
+      (typeof record.created_at === "string" && record.created_at) ||
+      null,
+    childRuns: childRaw.map(normalizeRunChainNode),
+  };
+}
+
+export const getContextJobRunChain = async (runId: string): Promise<ContextJobsRunChain> => {
   try {
     const response = await apiClient.get<Record<string, unknown>>(`/context-jobs/runs/${runId}/chain`);
-    return response.data;
+    const data = response.data ?? {};
+    const childRaw = Array.isArray(data.childRuns)
+      ? data.childRuns
+      : Array.isArray(data.child_runs)
+        ? data.child_runs
+        : [];
+
+    return {
+      runId:
+        (typeof data.runId === "string" && data.runId) ||
+        (typeof data.run_id === "string" && data.run_id) ||
+        runId,
+      parentRunId:
+        (typeof data.parentRunId === "string" && data.parentRunId) ||
+        (typeof data.parent_run_id === "string" && data.parent_run_id) ||
+        null,
+      parentRun: data.parentRun || data.parent_run
+        ? normalizeRunChainNode(data.parentRun ?? data.parent_run)
+        : null,
+      childRuns: childRaw.map(normalizeRunChainNode),
+    };
   } catch (error) {
     const normalizedError = normalizeError(error);
     logError(normalizedError, "getContextJobRunChain");
@@ -890,11 +1391,18 @@ export const publishContextJob = async (jobId: string, request?: JobLifecycleReq
   }
 };
 
-export const startContextJobRun = async (jobId: string, userRequest: string): Promise<ContextJobRunStartResponse> => {
+export const startContextJobRun = async (
+  jobId: string,
+  userRequest: string,
+  options?: { parentRunId?: string | null }
+): Promise<ContextJobRunStartResponse> => {
   try {
     const response = await apiClient.post<ContextJobRunStartResponse>(`/context-jobs/jobs/${jobId}/run`, {
       userRequest,
+      ...(options?.parentRunId ? { parentRunId: options.parentRunId } : {}),
     });
+    const { refreshContextJobsEntitlements } = await import("@/shared/lib/refreshContextJobsEntitlements");
+    void refreshContextJobsEntitlements();
     return response.data;
   } catch (error) {
     const normalizedError = normalizeError(error);

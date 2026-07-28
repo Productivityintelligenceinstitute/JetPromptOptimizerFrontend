@@ -17,16 +17,46 @@ import {
   type ContextJobsToolKey,
 } from "@/shared/api/contextJobs";
 
-const PROVIDER_OPTIONS = [
+const LLM_PROVIDER_OPTIONS = [
   { value: "openai", label: "OpenAI" },
   { value: "google", label: "Google Gemini" },
   { value: "anthropic", label: "Anthropic" },
 ] as const;
 
+const EMBEDDING_PROVIDER_OPTIONS = [
+  { value: "openai", label: "OpenAI" },
+  { value: "google", label: "Google Gemini" },
+  { value: "cohere", label: "Cohere" },
+  { value: "voyage", label: "Voyage" },
+  { value: "mistral", label: "Mistral" },
+  { value: "jina", label: "Jina" },
+] as const;
+
+const KEY_PURPOSE_OPTIONS = [
+  { value: "llm", label: "LLM" },
+  { value: "embedding", label: "Embedding" },
+] as const;
+
+type KeyPurpose = (typeof KEY_PURPOSE_OPTIONS)[number]["value"];
+
+function providersForPurpose(purpose: KeyPurpose) {
+  return purpose === "embedding" ? EMBEDDING_PROVIDER_OPTIONS : LLM_PROVIDER_OPTIONS;
+}
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return "Not set";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function normalizeKeyPurpose(value: string | null | undefined): KeyPurpose {
+  return value === "embedding" ? "embedding" : "llm";
+}
+
+function keyMatchesPurposeFilter(key: ContextJobsLlmKey, filter: KeyPurpose): boolean {
+  const purpose = (key.keyPurpose || "llm").toLowerCase();
+  if (purpose === "both") return true;
+  return purpose === filter;
 }
 
 function getLlmKeyLabel(key: ContextJobsLlmKey): string {
@@ -71,8 +101,11 @@ type KeyFeedback = {
 function KeysPageContent() {
   const entitlements = useContextJobsEntitlements();
   const plan = (entitlements.plan ?? "").toLowerCase();
-  const isPro = plan === "pro" || plan === "admin";
+  const canManageKeys =
+    entitlements.canManageKeys === true || plan === "trial" || plan === "pro" || plan === "admin";
+  const hasContextJobsAccess = Boolean(entitlements.contextJobsEnabled);
 
+  const [listPurpose, setListPurpose] = useState<KeyPurpose>("llm");
   const [llmProvider, setLlmProvider] = useState("openai");
   const [llmKeys, setLlmKeys] = useState<ContextJobsLlmKey[]>([]);
   const [toolKeys, setToolKeys] = useState<ContextJobsToolKey[]>([]);
@@ -84,9 +117,17 @@ function KeysPageContent() {
   const [busyToolKeyId, setBusyToolKeyId] = useState<string | null>(null);
   const [llmKeyFeedback, setLlmKeyFeedback] = useState<Record<string, KeyFeedback>>({});
   const [error, setError] = useState<string | null>(null);
-  const [llmForm, setLlmForm] = useState({ provider: "openai", keyLabel: "", apiKey: "" });
+  const [llmForm, setLlmForm] = useState({
+    keyPurpose: "llm" as KeyPurpose,
+    provider: "openai",
+    keyLabel: "",
+    apiKey: "",
+  });
   const [toolForm, setToolForm] = useState({ toolId: "", provider: "", keyLabel: "", apiKey: "" });
   const llmFeedbackTimers = useRef<Record<string, ReturnType<typeof setTimeout> | undefined>>({});
+
+  const listProviderOptions = useMemo(() => providersForPurpose(listPurpose), [listPurpose]);
+  const formProviderOptions = useMemo(() => providersForPurpose(llmForm.keyPurpose), [llmForm.keyPurpose]);
 
   const selectedToolDefinition = useMemo(
     () => tools.find((tool) => tool.id === toolForm.toolId) ?? null,
@@ -98,16 +139,30 @@ function KeysPageContent() {
     [tools]
   );
 
+  const displayedLlmKeys = useMemo(
+    () =>
+      llmKeys.filter((key) => {
+        if (!keyMatchesPurposeFilter(key, listPurpose)) return false;
+        if (llmProvider && key.provider && key.provider !== llmProvider) return false;
+        return true;
+      }),
+    [llmKeys, listPurpose, llmProvider]
+  );
+
   useEffect(() => {
+    if (entitlements.status !== "succeeded" || !hasContextJobsAccess || !canManageKeys) {
+      return;
+    }
+
     let mounted = true;
 
     const loadData = async (): Promise<void> => {
       try {
         setIsLoading(true);
-        const [llm, toolKeyList, toolCatalog] = await Promise.all([
-          getContextJobsLlmKeys(llmProvider),
-          getContextJobsToolKeys(),
-          getContextJobsTools(),
+        const toolRequests = Promise.all([getContextJobsToolKeys(), getContextJobsTools()]);
+        const [llm, [toolKeyList, toolCatalog]] = await Promise.all([
+          getContextJobsLlmKeys(undefined, listPurpose),
+          toolRequests,
         ]);
 
         if (!mounted) return;
@@ -122,13 +177,6 @@ function KeysPageContent() {
             ...current,
             toolId: current.toolId || nextTool.id,
             provider: current.provider || String(nextTool.externalProvider || ""),
-          }));
-        }
-
-        if (llm.length) {
-          setLlmForm((current) => ({
-            ...current,
-            provider: llmProvider,
           }));
         }
       } catch (loadError) {
@@ -147,7 +195,7 @@ function KeysPageContent() {
     return () => {
       mounted = false;
     };
-  }, [llmProvider]);
+  }, [canManageKeys, entitlements.status, hasContextJobsAccess, listPurpose]);
 
   useEffect(() => {
     return () => {
@@ -170,11 +218,13 @@ function KeysPageContent() {
   }, [toolForm.toolId, tools]);
 
   const refresh = async (): Promise<void> => {
+    if (!canManageKeys) return;
+
     try {
       setError(null);
       setIsLoading(true);
       const [llm, toolKeyList, toolCatalog] = await Promise.all([
-        getContextJobsLlmKeys(llmProvider),
+        getContextJobsLlmKeys(undefined, listPurpose),
         getContextJobsToolKeys(),
         getContextJobsTools(),
       ]);
@@ -199,9 +249,14 @@ function KeysPageContent() {
         provider: llmForm.provider,
         keyLabel: llmForm.keyLabel.trim(),
         apiKey: llmForm.apiKey.trim(),
+        keyPurpose: llmForm.keyPurpose,
       });
       setLlmForm((current) => ({ ...current, keyLabel: "", apiKey: "" }));
-      await refresh();
+      if (llmForm.keyPurpose !== listPurpose) {
+        setListPurpose(llmForm.keyPurpose);
+      } else {
+        await refresh();
+      }
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to add LLM key");
     } finally {
@@ -293,15 +348,31 @@ function KeysPageContent() {
     }
   };
 
-  if (entitlements.status === "succeeded" && !isPro) {
+  if (entitlements.status === "succeeded" && !hasContextJobsAccess) {
     return (
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_transparent_42%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_100%)]">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 sm:pt-28 pt-24">
           <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">Pro only</p>
-            <h1 className="mt-3 text-2xl font-semibold text-amber-950">BYOK key management requires Pro</h1>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">Upgrade required</p>
+            <h1 className="mt-3 text-2xl font-semibold text-amber-950">Context Jobs are not enabled for this account</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-900/80">
-              Your plan can use Context Jobs, but key management is reserved for Pro accounts.
+              Your current plan does not allow Context Jobs access. Upgrade to use BYOK key management.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (entitlements.status === "succeeded" && !canManageKeys) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_transparent_42%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_100%)]">
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 sm:pt-28 pt-24">
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-700">Key management unavailable</p>
+            <h1 className="mt-3 text-2xl font-semibold text-amber-950">BYOK key management is not available</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-900/80">
+              Your plan can use Context Jobs, but key management is not enabled for this account.
             </p>
           </div>
         </div>
@@ -346,34 +417,89 @@ function KeysPageContent() {
             <section className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">LLM keys</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Provider keys</p>
                   <h2 className="mt-2 text-xl font-semibold text-slate-900">Add, verify, and revoke provider keys</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Select a provider, add a label and API key, then verify the saved key against the provider API.
+                    Choose a key purpose, select a provider, add a label and API key, then verify the saved key against the provider API.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {PROVIDER_OPTIONS.map((provider) => (
-                    <button
-                      key={provider.value}
-                      type="button"
-                      onClick={() => {
-                        setLlmProvider(provider.value);
-                        setLlmForm((current) => ({ ...current, provider: provider.value }));
-                      }}
-                      className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                        llmProvider === provider.value
-                          ? "bg-slate-900 text-white"
-                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {provider.label}
-                    </button>
-                  ))}
+                <div className="flex flex-col items-stretch gap-3 sm:items-end">
+                  <div className="flex flex-wrap gap-2">
+                    {KEY_PURPOSE_OPTIONS.map((purpose) => (
+                      <button
+                        key={purpose.value}
+                        type="button"
+                        onClick={() => {
+                          const nextProviders = providersForPurpose(purpose.value);
+                          const nextProvider = nextProviders[0]?.value ?? "openai";
+                          setListPurpose(purpose.value);
+                          setLlmProvider(nextProvider);
+                          setLlmForm((current) => ({
+                            ...current,
+                            keyPurpose: purpose.value,
+                            provider: nextProviders.some((item) => item.value === current.provider)
+                              ? current.provider
+                              : nextProvider,
+                          }));
+                        }}
+                        className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                          listPurpose === purpose.value
+                            ? "bg-teal-700 text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {purpose.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {listProviderOptions.map((provider) => (
+                      <button
+                        key={provider.value}
+                        type="button"
+                        onClick={() => {
+                          setLlmProvider(provider.value);
+                          setLlmForm((current) => ({ ...current, provider: provider.value }));
+                        }}
+                        className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                          llmProvider === provider.value
+                            ? "bg-slate-900 text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {provider.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <form className="mt-6 grid gap-4 md:grid-cols-[180px_1fr_1fr_auto]" onSubmit={handleCreateLlmKey}>
+              <form className="mt-6 grid gap-4 md:grid-cols-[140px_160px_1fr_1fr_auto]" onSubmit={handleCreateLlmKey}>
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">Purpose</span>
+                  <select
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    value={llmForm.keyPurpose}
+                    onChange={(e) => {
+                      const nextPurpose = e.target.value as KeyPurpose;
+                      const nextProviders = providersForPurpose(nextPurpose);
+                      const nextProvider = nextProviders[0]?.value ?? "openai";
+                      setLlmForm((current) => ({
+                        ...current,
+                        keyPurpose: nextPurpose,
+                        provider: nextProvider,
+                      }));
+                      setListPurpose(nextPurpose);
+                      setLlmProvider(nextProvider);
+                    }}
+                  >
+                    {KEY_PURPOSE_OPTIONS.map((purpose) => (
+                      <option key={purpose.value} value={purpose.value}>
+                        {purpose.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="block">
                   <span className="text-sm font-medium text-slate-700">Provider</span>
                   <select
@@ -385,7 +511,7 @@ function KeysPageContent() {
                       setLlmForm((current) => ({ ...current, provider: nextProvider }));
                     }}
                   >
-                    {PROVIDER_OPTIONS.map((provider) => (
+                    {formProviderOptions.map((provider) => (
                       <option key={provider.value} value={provider.value}>
                         {provider.label}
                       </option>
@@ -418,69 +544,81 @@ function KeysPageContent() {
                   disabled={isSavingLlm}
                   className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSavingLlm ? "Saving..." : "Add LLM key"}
+                  {isSavingLlm ? "Saving..." : "Add key"}
                 </button>
               </form>
 
               <div className="mt-6 space-y-3">
-                {llmKeys.length ? (
-                  llmKeys.map((key) => (
-                    <div key={key.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-slate-900">{getLlmKeyLabel(key)}</p>
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusPillClass(key.status)}`}>
-                              {key.status || "unknown"}
-                            </span>
-                            {key.isPlatformKey ? (
-                              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">Platform</span>
-                            ) : null}
-                          </div>
-                          <p className="mt-1 text-sm text-slate-600">
-                            Provider: {key.provider || "Not set"} · Created {formatDate(key.createdAt)}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            Verified {formatDate(key.lastVerifiedAt)} · Uses {key.usageCount ?? 0}
-                          </p>
-                          {llmKeyFeedback[key.id] ? (
-                            <div
-                              className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${
-                                llmKeyFeedback[key.id].type === "success"
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                  : "border-rose-200 bg-rose-50 text-rose-800"
-                              }`}
-                            >
-                              {llmKeyFeedback[key.id].message}
+                {displayedLlmKeys.length ? (
+                  displayedLlmKeys.map((key) => {
+                    const purpose = normalizeKeyPurpose(key.keyPurpose);
+                    return (
+                      <div key={key.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-slate-900">{getLlmKeyLabel(key)}</p>
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                  purpose === "embedding"
+                                    ? "bg-violet-100 text-violet-700"
+                                    : "bg-sky-100 text-sky-700"
+                                }`}
+                              >
+                                {purpose === "embedding" ? "Embedding" : "LLM"}
+                              </span>
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusPillClass(key.status)}`}>
+                                {key.status || "unknown"}
+                              </span>
+                              {key.isPlatformKey ? (
+                                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">Platform</span>
+                              ) : null}
                             </div>
-                          ) : null}
-                          {key.lastError ? <p className="mt-2 text-sm text-rose-700">{key.lastError}</p> : null}
-                        </div>
+                            <p className="mt-1 text-sm text-slate-600">
+                              Provider: {key.provider || "Not set"} · Created {formatDate(key.createdAt)}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Verified {formatDate(key.lastVerifiedAt)} · Uses {key.usageCount ?? 0}
+                            </p>
+                            {llmKeyFeedback[key.id] ? (
+                              <div
+                                className={`mt-3 rounded-2xl border px-4 py-3 text-sm ${
+                                  llmKeyFeedback[key.id].type === "success"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-rose-200 bg-rose-50 text-rose-800"
+                                }`}
+                              >
+                                {llmKeyFeedback[key.id].message}
+                              </div>
+                            ) : null}
+                            {key.lastError ? <p className="mt-2 text-sm text-rose-700">{key.lastError}</p> : null}
+                          </div>
 
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            disabled={busyLlmKeyId === key.id}
-                            onClick={() => void handleVerifyLlmKey(key.id)}
-                            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {busyLlmKeyId === key.id ? "Working..." : "Verify"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busyLlmKeyId === key.id || Boolean(key.isPlatformKey)}
-                            onClick={() => void handleDeleteLlmKey(key.id)}
-                            className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={busyLlmKeyId === key.id}
+                              onClick={() => void handleVerifyLlmKey(key.id)}
+                              className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {busyLlmKeyId === key.id ? "Working..." : "Verify"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busyLlmKeyId === key.id || Boolean(key.isPlatformKey)}
+                              onClick={() => void handleDeleteLlmKey(key.id)}
+                              className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
-                    No LLM keys found for this provider.
+                    No {listPurpose === "embedding" ? "embedding" : "LLM"} keys found for this provider.
                   </div>
                 )}
               </div>

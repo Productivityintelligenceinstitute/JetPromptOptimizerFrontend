@@ -47,11 +47,11 @@ export const normalizeError = (error: unknown): ApiError => {
       const record = value as Record<string, unknown>;
       const nestedError = record.error && typeof record.error === "object" ? (record.error as Record<string, unknown>) : null;
       const nestedCandidates = [
-        record.detail,
         record.message,
+        record.detail,
         record.error,
-        nestedError?.detail,
         nestedError?.message,
+        nestedError?.detail,
         record.errors,
       ];
 

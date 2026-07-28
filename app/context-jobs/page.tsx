@@ -4,40 +4,53 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AuthGuard from "@/shared/components/auth/AuthGuard";
+import UpgradeRequiredModal from "@/shared/components/Modal/UpgradeRequiredModal";
 import {
   createContextJobFromPrompt,
   getContextJobsStats,
   type ContextJobsStats,
 } from "@/shared/api/contextJobs";
+import { useAuth } from "@/shared/context/AuthContext";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
 import { storeContextJobDraft } from "@/shared/lib/contextJobsDraft";
+import { hasPermissionForLevel, type OptimizationLevel } from "@/shared/utils/optimizationLevel";
 
-const promptCards = [
+const promptCards: Array<{
+  title: string;
+  level: OptimizationLevel;
+  tone: string;
+  accent: string;
+  summary: string;
+}> = [
   {
     title: "Basic",
+    level: "basic",
     tone: "from-sky-50 to-white",
     accent: "text-sky-700",
     summary: "Lightweight prompt cleanup for quick wins and shorter turnaround.",
   },
   {
     title: "Structured",
+    level: "structured",
     tone: "from-teal-50 to-white",
     accent: "text-teal-700",
     summary: "Adds roles, expected output, and guardrails for steadier results.",
   },
   {
     title: "Mastery",
+    level: "mastery",
     tone: "from-emerald-50 to-white",
     accent: "text-emerald-700",
     summary: "Uses stronger scaffolding for more demanding prompt workflows.",
   },
   {
     title: "System",
+    level: "system",
     tone: "from-slate-50 to-white",
     accent: "text-slate-700",
     summary: "Keeps the highest-level rules and constraints ready for reuse.",
   },
-] as const;
+];
 
 const WORKFLOW_TYPES = [
   { value: "standard", label: "Standard" },
@@ -64,6 +77,7 @@ function formatPercent(value: number | null | undefined): string {
 
 function ContextJobsDashboardContent() {
   const router = useRouter();
+  const { user } = useAuth();
   const entitlements = useContextJobsEntitlements();
   const [stats, setStats] = useState<ContextJobsStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,6 +87,18 @@ function ContextJobsDashboardContent() {
   const [workflowType, setWorkflowType] = useState<(typeof WORKFLOW_TYPES)[number]["value"]>("standard");
   const [isCreating, setIsCreating] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeFeatureName, setUpgradeFeatureName] = useState("");
+
+  const handleOptimizationLevelClick = (level: OptimizationLevel, title: string): void => {
+    const hasPermission = hasPermissionForLevel(user?.package_name, level, user?.role);
+    if (!hasPermission) {
+      setUpgradeFeatureName(title);
+      setUpgradeModalOpen(true);
+      return;
+    }
+    router.push(`/chat/new?level=${level}`);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -245,7 +271,7 @@ function ContextJobsDashboardContent() {
                       Build a Context Job, review the live workspace, and keep moving.
                     </h2>
                     <p className="text-sm leading-6 text-slate-600">
-                      This overview mirrors the prototype&apos;s landing experience: a clear entry point, live stats, and a fast path into the jobs library.
+                      A clear entry point with live stats and a fast path into the jobs library.
                     </p>
                   </div>
 
@@ -291,23 +317,28 @@ function ContextJobsDashboardContent() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Prompt optimization</p>
-                  <h3 className="mt-2 text-xl font-semibold text-slate-900">Four guided levels from the prototype</h3>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900">Four guided optimization levels</h3>
                 </div>
                 <div className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700">
-                  Focused on prompt shaping before builder flows land
+                  Prompt shaping across Fast, Intermediate, Advanced, and Expert
                 </div>
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {promptCards.map((card) => (
-                  <div
+                  <button
                     key={card.title}
-                    className={`rounded-3xl border border-slate-200 bg-gradient-to-br ${card.tone} p-5 shadow-sm`}
+                    type="button"
+                    onClick={() => handleOptimizationLevelClick(card.level, card.title)}
+                    className={`rounded-3xl border border-slate-200 bg-gradient-to-br ${card.tone} p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-200`}
                   >
                     <p className={`text-sm font-semibold uppercase tracking-[0.22em] ${card.accent}`}>{card.title}</p>
                     <p className="mt-3 text-lg font-semibold text-slate-900">Optimization tier</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{card.summary}</p>
-                  </div>
+                    <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Start {card.title.toLowerCase()} chat
+                    </p>
+                  </button>
                 ))}
               </div>
             </section>
@@ -315,11 +346,11 @@ function ContextJobsDashboardContent() {
             <section className="rounded-[2rem] border border-dashed border-slate-300 bg-white/70 p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">What comes next</p>
-                  <h3 className="mt-2 text-lg font-semibold text-slate-900">Conversion and builder flows stay ready for the later slices</h3>
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Next steps</p>
+                  <h3 className="mt-2 text-lg font-semibold text-slate-900">Open the jobs library or start a new Context Job</h3>
                 </div>
                 <p className="text-sm text-slate-600">
-                  The dashboard is now in place, so the next slices can focus on the builder experience and the deeper run workflow.
+                  Use the builder to create and publish jobs, then run them and review results from the runs workspace.
                 </p>
               </div>
             </section>
@@ -399,6 +430,12 @@ function ContextJobsDashboardContent() {
             </div>
           </div>
         ) : null}
+
+        <UpgradeRequiredModal
+          isOpen={upgradeModalOpen}
+          onClose={() => setUpgradeModalOpen(false)}
+          featureName={upgradeFeatureName}
+        />
       </div>
     </div>
   );

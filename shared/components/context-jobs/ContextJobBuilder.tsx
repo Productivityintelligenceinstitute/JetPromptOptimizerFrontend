@@ -25,6 +25,11 @@ import {
 } from "@/shared/api/contextJobs";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
 import { consumeContextJobDraft } from "@/shared/lib/contextJobsDraft";
+import {
+  detectWorkflowCategoryMismatch,
+  getWorkflowCategoryProfile,
+  mergeSpecialtyValidationRules,
+} from "@/shared/lib/workflowCategoryProfiles";
 
 type BuilderMode = "new" | "edit";
 type BuilderStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
@@ -65,21 +70,30 @@ const EXECUTION_MODES = [
   { value: "provider_multi_agent", label: "Provider multi-agent" },
 ] as const;
 
+const ESCALATION_POLICIES = [
+  { value: "", label: "Not set (optional)" },
+  { value: "never", label: "Never escalate" },
+  { value: "on_failure", label: "Escalate on failure" },
+  { value: "always_review", label: "Always require review" },
+] as const;
+
+function normalizeEscalationPolicy(value: string | null | undefined): string {
+  const key = (value ?? "").trim().toLowerCase();
+  if (!key) return "";
+  if (key === "notify" || key === "reject") return "always_review";
+  if (key === "pause") return "on_failure";
+  if (key === "never" || key === "on_failure" || key === "always_review") return key;
+  return "";
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   google: "Google Gemini",
   anthropic: "Anthropic",
 };
 
-const TRIAL_MODELS: Record<string, string> = {
-  openai: "gpt-4o-mini",
-  google: "gemini-2.5-flash",
-  anthropic: "claude-haiku-4-5",
-};
-
 const GLOSSARY_CATEGORIES = ["general", "domain", "policy", "tooling"] as const;
 const RELATIONSHIP_TYPES = ["related_to", "depends_on", "similar_to", "blocks", "supports"] as const;
-const SOURCE_KINDS = ["document", "website", "database", "api", "person"] as const;
 type ToolPermissionItem = {
   toolId: string;
   enabled: boolean;
@@ -92,18 +106,137 @@ type ToolPermissionSource = {
   readOnly: boolean;
   category?: string | null;
   aliases?: string[];
+  externalProvider?: string | null;
+  hasUserKey?: boolean;
+  requiresExternalKey?: boolean;
 };
 
 const TOOL_PERMISSION_PRESETS: ToolPermissionSource[] = [
   { id: "file-write", label: "File write", readOnly: false, category: "write", aliases: ["write"] },
-  { id: "web-search", label: "Web search", readOnly: true, category: "search", aliases: ["search"] },
+  {
+    id: "web-search",
+    label: "Web search",
+    readOnly: true,
+    category: "search",
+    aliases: ["search"],
+    externalProvider: "tavily",
+    requiresExternalKey: true,
+    hasUserKey: false,
+  },
   { id: "doc-reader", label: "Document reader", readOnly: true, category: "read", aliases: ["read"] },
   { id: "tool-executor", label: "Tool executor", readOnly: false, category: "execute", aliases: ["execute"] },
   { id: "contract-analyzer", label: "Contract analyzer", readOnly: true, category: "analysis", aliases: ["analyze"] },
   { id: "summarizer", label: "Summarizer", readOnly: true, category: "analysis", aliases: ["summarize"] },
 ] as const;
-const VALIDATION_TYPES = ["groundedness", "format", "policy", "safety", "quality"] as const;
-const VALIDATION_SEVERITIES = ["info", "warning", "error"] as const;
+const VALIDATION_TYPES = [
+  { value: "groundedness", label: "Groundedness", hint: "Output must match retrieved sources" },
+  { value: "format", label: "Format", hint: "Output must follow template / blueprint sections" },
+  { value: "citation", label: "Citation", hint: "Output must include [source:] citations" },
+  { value: "policy", label: "Policy", hint: "Block disallowed AI disclaimers / phrases" },
+  { value: "procurement", label: "Procurement", hint: "Domain checker on tool output (contract/spend/risk)" },
+  { value: "quality", label: "Quality", hint: "LLM judge uses the requirement text below" },
+  { value: "safety", label: "Safety", hint: "LLM judge uses the safety requirement below" },
+  { value: "custom", label: "Custom", hint: "LLM judge uses the custom requirement below" },
+] as const;
+const VALIDATION_SEVERITIES = [
+  { value: "info", label: "Info", hint: "Log only" },
+  { value: "warning", label: "Warning", hint: "Pass with warnings" },
+  { value: "error", label: "Error", hint: "Triggers repair retry" },
+  { value: "blocking", label: "Blocking", hint: "Hard block — run fails policy gate" },
+] as const;
+const JUDGED_VALIDATION_TYPES = new Set(["custom", "quality", "safety"]);
+const PROCUREMENT_CHECKERS = [
+  {
+    value: "risk_threshold",
+    label: "Risk tier threshold",
+    hint: "Fails when riskTier in output/tool metadata exceeds the max allowed tier.",
+    defaultName: "Risk tier threshold",
+    defaultParams: { maxRiskTier: "medium" },
+  },
+  {
+    value: "rate_benchmark",
+    label: "Rate benchmark variance",
+    hint: "Requires spend-analyzer. Fails when normalized rates exceed peer benchmark by threshold %.",
+    defaultName: "Rate benchmark variance",
+    defaultParams: { thresholdPercent: 15 },
+  },
+  {
+    value: "mandatory_clause",
+    label: "Mandatory contract clauses",
+    hint: "Requires contract-analyzer. Fails when required clause ids are missing from analysis.",
+    defaultName: "Mandatory clause coverage",
+    defaultParams: { requiredClauseIds: ["liability_cap", "termination", "data_protection"] },
+  },
+] as const;
+const RISK_TIER_OPTIONS = ["low", "medium", "high", "critical"] as const;
+
+function requiresValidationDescription(type: string): boolean {
+  return JUDGED_VALIDATION_TYPES.has(type);
+}
+
+function isProcurementValidationType(type: string): boolean {
+  return type === "procurement";
+}
+
+function normalizeProcurementParams(params?: Record<string, unknown>): string {
+  if (!params || typeof params !== "object") return "";
+  const sorted = Object.keys(params)
+    .sort()
+    .reduce<Record<string, unknown>>((acc, key) => {
+      acc[key] = params[key];
+      return acc;
+    }, {});
+  return JSON.stringify(sorted);
+}
+
+function validationRuleFingerprint(rule: {
+  name: string;
+  type: string;
+  severity: string;
+  description?: string;
+  checker?: string;
+  params?: Record<string, unknown>;
+}): string {
+  if (isProcurementValidationType(rule.type)) {
+    return [
+      "procurement",
+      rule.severity.trim().toLowerCase(),
+      (rule.checker ?? "").trim().toLowerCase(),
+      normalizeProcurementParams(rule.params),
+    ].join("||");
+  }
+  const parts = [rule.type.trim().toLowerCase(), rule.severity.trim().toLowerCase()];
+  if (requiresValidationDescription(rule.type)) {
+    parts.push((rule.description ?? "").trim().toLowerCase());
+  }
+  return parts.join("||");
+}
+
+function validationRuleDuplicateMessage(type: string): string {
+  if (isProcurementValidationType(type)) {
+    return "A procurement rule with this checker, severity, and parameters already exists.";
+  }
+  if (requiresValidationDescription(type)) {
+    return "A rule with this check type, severity, and requirement description already exists.";
+  }
+  return "A rule with this check type and severity already exists. Change type or severity, or remove the existing rule.";
+}
+
+function formatProcurementRuleSummary(rule: ValidationRuleItem): string | null {
+  if (!isProcurementValidationType(rule.type) || !rule.checker) return null;
+  const params = rule.params ?? {};
+  if (rule.checker === "risk_threshold") {
+    return `Checker: risk_threshold · maxRiskTier=${String(params.maxRiskTier ?? "medium")}`;
+  }
+  if (rule.checker === "rate_benchmark") {
+    return `Checker: rate_benchmark · thresholdPercent=${String(params.thresholdPercent ?? 15)}`;
+  }
+  if (rule.checker === "mandatory_clause") {
+    const ids = Array.isArray(params.requiredClauseIds) ? params.requiredClauseIds.join(", ") : "";
+    return `Checker: mandatory_clause · clauses=${ids || "(none)"}`;
+  }
+  return `Checker: ${rule.checker}`;
+}
 
 const formInputClass =
   "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200";
@@ -169,8 +302,8 @@ const defaultFormState: BuilderFormState = {
   vectorConnectionId: "",
   memoryConfigJson: JSON.stringify(
     {
-      sessionMemory: true,
-      projectMemory: false,
+      sessionMemory: false,
+      projectMemory: true,
       userProfileMemory: false,
       retentionDays: 30,
     },
@@ -189,7 +322,6 @@ const defaultFormState: BuilderFormState = {
         id: "groundedness",
         type: "groundedness",
         name: "Groundedness Check",
-        description: "Ensure claims are grounded in retrieved evidence",
         enabled: true,
         severity: "error",
       },
@@ -438,33 +570,33 @@ function getRelationshipPatternRows(asset: ContextJobAsset): RelationshipItem[] 
   if (!Array.isArray(rawPatterns)) return [];
 
   return rawPatterns
-    .map((pattern) => {
-      if (!pattern || typeof pattern !== "object") return null;
-      const record = pattern as Record<string, unknown>;
-      const source = typeof record.from === "string" ? record.from : typeof record.source === "string" ? record.source : "";
-      const target = typeof record.to === "string" ? record.to : typeof record.target === "string" ? record.target : "";
-      const relation = typeof record.relation === "string" ? record.relation : "related_to";
-      if (!source || !target) return null;
-      return { source, relation, target };
-    })
+    .map((pattern) => normalizeRelationshipItem(pattern))
     .filter((item): item is RelationshipItem => Boolean(item));
 }
 
 function getTrustedSourceFromAsset(asset: ContextJobAsset): TrustedSourceItem | null {
   const content = getAssetContent(asset);
-  if (!content) return null;
+  const name =
+    (typeof content?.name === "string" && content.name.trim()) ||
+    asset.name.trim();
+  if (!name) return null;
 
-  const sourceType = typeof content.sourceType === "string" ? content.sourceType : "asset";
-  const name = typeof content.name === "string" ? content.name : asset.name;
-  const url = typeof content.url === "string" ? content.url : "";
+  // Prefer explicit metadata filters from the asset when present.
+  const key =
+    (typeof content?.key === "string" && content.key.trim()) ||
+    (typeof content?.metadataKey === "string" && content.metadataKey.trim()) ||
+    undefined;
+  const value =
+    (typeof content?.value === "string" && content.value.trim()) ||
+    name;
+  const opRaw = typeof content?.op === "string" ? content.op.trim().toLowerCase() : "";
+  const op: "eq" | "contains" =
+    opRaw === "contains" || opRaw === "substring" ? "contains" : key ? "eq" : "contains";
 
-  if (!name && !url) return null;
-
-  return {
-    name,
-    url,
-    kind: sourceType,
-  };
+  if (key) {
+    return { key, value, op };
+  }
+  return { name: value, value, op: "contains" };
 }
 
 type GlossaryTermItem = {
@@ -477,20 +609,118 @@ type RelationshipItem = {
   source: string;
   relation: string;
   target: string;
+  fromTerm?: string;
+  toTerm?: string;
 };
+
+function normalizeRelationshipItem(value: unknown): RelationshipItem | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const source =
+    (typeof record.source === "string" && record.source.trim()) ||
+    (typeof record.fromTerm === "string" && record.fromTerm.trim()) ||
+    (typeof record.from_term === "string" && record.from_term.trim()) ||
+    (typeof record.from === "string" && record.from.trim()) ||
+    "";
+  const target =
+    (typeof record.target === "string" && record.target.trim()) ||
+    (typeof record.toTerm === "string" && record.toTerm.trim()) ||
+    (typeof record.to_term === "string" && record.to_term.trim()) ||
+    (typeof record.to === "string" && record.to.trim()) ||
+    "";
+  const relation =
+    (typeof record.relation === "string" && record.relation.trim()) ||
+    (typeof record.relationship === "string" && record.relationship.trim()) ||
+    "related_to";
+  if (!source || !target) return null;
+  return {
+    source,
+    relation,
+    target,
+    fromTerm: source,
+    toTerm: target,
+  };
+}
 
 type TrustedSourceItem = {
-  name: string;
-  url: string;
-  kind: string;
+  key?: string;
+  name?: string;
+  value: string;
+  op?: "eq" | "contains";
 };
 
+function normalizeTrustedSourceItem(value: unknown): TrustedSourceItem | null {
+  if (typeof value === "string" && value.trim()) {
+    return { name: value.trim(), value: value.trim(), op: "contains" };
+  }
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const keyRaw = record.key ?? record.metadataKey ?? record.metadata_key;
+  const key = typeof keyRaw === "string" && keyRaw.trim() ? keyRaw.trim() : undefined;
+  const valueRaw =
+    typeof record.value === "string" && record.value.trim()
+      ? record.value.trim()
+      : typeof record.name === "string" && record.name.trim()
+        ? record.name.trim()
+        : typeof record.label === "string" && record.label.trim()
+          ? record.label.trim()
+          : "";
+  if (!valueRaw) return null;
+  const opRaw = typeof record.op === "string" ? record.op.trim().toLowerCase() : "";
+  const op: "eq" | "contains" =
+    opRaw === "contains" || opRaw === "substring" ? "contains" : key ? "eq" : "contains";
+  if (key) {
+    return { key, value: valueRaw, op };
+  }
+  return { name: valueRaw, value: valueRaw, op: "contains" };
+}
+
+function trustedSourceLabel(source: TrustedSourceItem): string {
+  const op = source.op === "eq" ? "exact" : "contains";
+  if (source.key) {
+    return `${source.key}=${source.value} (${op})`;
+  }
+  return `${source.value} (${op} on file/source/url)`;
+}
+
 type ValidationRuleItem = {
+  id?: string;
   name: string;
   type: string;
   severity: string;
+  description?: string;
+  checker?: string;
+  params?: Record<string, unknown>;
   enabled: boolean;
 };
+
+function buildProcurementParamsFromDraft(draft: {
+  checker: string;
+  thresholdPercent: string;
+  maxRiskTier: string;
+  requiredClauseIds: string;
+}): Record<string, unknown> {
+  if (draft.checker === "rate_benchmark") {
+    const threshold = Number(draft.thresholdPercent);
+    return { thresholdPercent: Number.isFinite(threshold) && threshold > 0 ? threshold : 15 };
+  }
+  if (draft.checker === "risk_threshold") {
+    const tier = draft.maxRiskTier.trim().toLowerCase();
+    return { maxRiskTier: RISK_TIER_OPTIONS.includes(tier as (typeof RISK_TIER_OPTIONS)[number]) ? tier : "medium" };
+  }
+  if (draft.checker === "mandatory_clause") {
+    const requiredClauseIds = draft.requiredClauseIds
+      .split(/[,\n]/)
+      .map((item) => item.trim().toLowerCase().replace(/\s+/g, "_"))
+      .filter(Boolean);
+    return { requiredClauseIds };
+  }
+  return {};
+}
+
+function procurementCheckerPreset(checker: string) {
+  return PROCUREMENT_CHECKERS.find((item) => item.value === checker) ?? PROCUREMENT_CHECKERS[0];
+}
 
 function importGlossaryTermsFromAsset(asset: ContextJobAsset): GlossaryTermItem[] {
   const rows = getArrayFromAssetContent(asset);
@@ -512,22 +742,17 @@ function importGlossaryTermsFromAsset(asset: ContextJobAsset): GlossaryTermItem[
 function importTrustedSourcesFromAsset(asset: ContextJobAsset): TrustedSourceItem[] {
   const rows = getArrayFromAssetContent(asset);
   return rows
-    .map((row) => {
-      if (!row) return null;
-      if (typeof row === "string") {
-        return { name: row, url: "", kind: asset.type };
-      }
-      if (typeof row !== "object") return null;
-      const record = row as Record<string, unknown>;
-      const name = typeof record.name === "string" ? record.name : typeof record.label === "string" ? record.label : "";
-      if (!name) return null;
-      return {
-        name,
-        url: typeof record.url === "string" ? record.url : typeof record.value === "string" ? record.value : "",
-        kind: typeof record.sourceType === "string" ? record.sourceType : asset.type,
-      };
-    })
+    .map((row) => normalizeTrustedSourceItem(row))
     .filter((item): item is TrustedSourceItem => Boolean(item));
+}
+
+function normalizeMemoryConfig(value: Record<string, unknown>): Record<string, unknown> {
+  const jobMemoryEnabled = Boolean(value.projectMemory) || value.sessionMemory !== false;
+  return {
+    ...value,
+    sessionMemory: false,
+    projectMemory: jobMemoryEnabled,
+  };
 }
 
 function buildPayload(form: BuilderFormState, tools: readonly ToolPermissionSource[]): ContextJobMutationPayload {
@@ -543,14 +768,18 @@ function buildPayload(form: BuilderFormState, tools: readonly ToolPermissionSour
     retrievalConfig: parseJsonInput<Record<string, unknown>>(form.retrievalConfigJson, {}),
     retrievalMode: form.retrievalMode.trim(),
     vectorConnectionId: form.vectorConnectionId.trim(),
-    memoryConfig: parseJsonInput<Record<string, unknown>>(form.memoryConfigJson, {}),
+    memoryConfig: normalizeMemoryConfig(parseJsonInput<Record<string, unknown>>(form.memoryConfigJson, {})),
     toolPermissions: serializeToolPermissions(form.toolPermissionsJson, tools),
     validationRules: parseJsonInput<unknown[]>(form.validationRulesJson, []),
     escalationPolicy: form.escalationPolicy.trim(),
     budgetSettings: parseJsonInput<Record<string, unknown>>(form.budgetSettingsJson, {}),
     glossaryTerms: parseJsonInput<unknown[]>(form.glossaryTermsJson, []),
-    relationships: parseJsonInput<unknown[]>(form.relationshipsJson, []),
-    trustedSources: parseJsonInput<unknown[]>(form.trustedSourcesJson, []),
+    relationships: parseJsonInput<unknown[]>(form.relationshipsJson, [])
+      .map((item) => normalizeRelationshipItem(item))
+      .filter((item): item is RelationshipItem => Boolean(item)),
+    trustedSources: parseJsonInput<unknown[]>(form.trustedSourcesJson, [])
+      .map((item) => normalizeTrustedSourceItem(item))
+      .filter((item): item is TrustedSourceItem => Boolean(item)),
     approvalRequired: form.approvalRequired,
     policyProfile: form.policyProfile.trim(),
     executionProvider: form.executionProvider.trim(),
@@ -624,7 +853,7 @@ function loadFormFromJob(job: ContextJob): BuilderFormState {
     outputTemplate: job.outputTemplate ?? "",
     stableInstructions: job.stableInstructions ?? "",
     roleConfiguration: job.roleConfiguration ?? "",
-    escalationPolicy: job.escalationPolicy ?? "",
+    escalationPolicy: normalizeEscalationPolicy(job.escalationPolicy),
     glossaryTermsJson: stringifyJsonInput(job.glossaryTerms, "[]"),
     relationshipsJson: stringifyJsonInput(job.relationships, "[]"),
     trustedSourcesJson: stringifyJsonInput(job.trustedSources, "[]"),
@@ -711,6 +940,37 @@ function loadFormFromDraft(draft: Record<string, unknown>): BuilderFormState {
       continue;
     }
 
+    if (draftKey === "relationships" && Array.isArray(value)) {
+      formRecord[formKey] = stringifyJsonInput(
+        value.map((item) => normalizeRelationshipItem(item)).filter((item): item is RelationshipItem => Boolean(item)),
+        fallbackKey,
+      );
+      continue;
+    }
+
+    if (draftKey === "glossaryTerms" && Array.isArray(value)) {
+      formRecord[formKey] = stringifyJsonInput(
+        value
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const row = item as Record<string, unknown>;
+            const term =
+              (typeof row.term === "string" && row.term.trim()) ||
+              (typeof row.name === "string" && row.name.trim()) ||
+              "";
+            if (!term) return null;
+            return {
+              term,
+              definition: typeof row.definition === "string" ? row.definition : "",
+              category: typeof row.category === "string" && row.category.trim() ? row.category : "domain",
+            };
+          })
+          .filter(Boolean),
+        fallbackKey,
+      );
+      continue;
+    }
+
     formRecord[formKey] = typeof value === "string" ? value : stringifyJsonInput(value, fallbackKey);
   }
 
@@ -722,6 +982,11 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   const { user } = useAuth();
   const entitlements = useContextJobsEntitlements();
   const plan = (entitlements.plan ?? "").toLowerCase();
+  const canManageKeys =
+    entitlements.canManageKeys === true || plan === "trial" || plan === "pro" || plan === "admin";
+  const expectsLlmKey = canManageKeys;
+  // Trial (and admin) can run on Jet's managed keys, so BYOK is optional for them.
+  const requiresLlmKey = plan === "pro";
   const [step, setStep] = useState<BuilderStep>(0);
   const [form, setForm] = useState<BuilderFormState>(defaultFormState);
   const [baselineForm, setBaselineForm] = useState<BuilderFormState | null>(mode === "edit" ? null : defaultFormState);
@@ -739,6 +1004,8 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   const [isLoadingVectorConnections, setIsLoadingVectorConnections] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [isLoadingTools, setIsLoadingTools] = useState(false);
+  const [pendingWorkflowType, setPendingWorkflowType] = useState<string | null>(null);
+  const [categoryNotice, setCategoryNotice] = useState<string | null>(null);
   const [glossaryDraft, setGlossaryDraft] = useState<{ term: string; definition: string; category: string }>({
     term: "",
     definition: "",
@@ -749,16 +1016,35 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     relation: RELATIONSHIP_TYPES[0],
     target: "",
   });
-  const [trustedSourceDraft, setTrustedSourceDraft] = useState<{ name: string; url: string; kind: string }>({
-    name: "",
-    url: "",
-    kind: SOURCE_KINDS[0],
+  const [trustedSourceDraft, setTrustedSourceDraft] = useState<{
+    key: string;
+    value: string;
+    op: "eq" | "contains";
+  }>({
+    key: "",
+    value: "",
+    op: "eq",
   });
-  const [validationRuleDraft, setValidationRuleDraft] = useState<{ name: string; type: string; severity: string }>({
+  const [validationRuleDraft, setValidationRuleDraft] = useState<{
+    name: string;
+    type: string;
+    severity: string;
+    description: string;
+    checker: string;
+    thresholdPercent: string;
+    maxRiskTier: string;
+    requiredClauseIds: string;
+  }>({
     name: "",
-    type: VALIDATION_TYPES[0],
-    severity: VALIDATION_SEVERITIES[2],
+    type: VALIDATION_TYPES[0].value,
+    severity: VALIDATION_SEVERITIES[2].value,
+    description: "",
+    checker: PROCUREMENT_CHECKERS[0].value,
+    thresholdPercent: "15",
+    maxRiskTier: "medium",
+    requiredClauseIds: "liability_cap, termination, data_protection",
   });
+  const [validationRuleError, setValidationRuleError] = useState<string | null>(null);
   const draftPrefillAppliedRef = useRef(false);
   const isFirstStep = step === STEPS[0].id;
   const isLastStep = step === STEPS[STEPS.length - 1].id;
@@ -827,27 +1113,12 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     setForm((current) => ({
       ...current,
       executionProvider: nextProvider,
-      executionModel: plan === "trial" ? (TRIAL_MODELS[nextProvider] ?? "") : current.executionModel,
-      llmKeyId: plan === "trial" ? "" : current.llmKeyId,
     }));
-  }, [entitlements.providers, form.executionProvider, mode, plan]);
+  }, [entitlements.providers, form.executionProvider, mode]);
 
   useEffect(() => {
-    if (!form.executionProvider) return;
-
-    if (plan === "trial") {
-      const trialModel = TRIAL_MODELS[form.executionProvider] ?? "";
-      setForm((current) => {
-        if (current.executionModel === trialModel && current.llmKeyId === "") {
-          return current;
-        }
-
-        return {
-          ...current,
-          executionModel: trialModel,
-          llmKeyId: "",
-        };
-      });
+    if (!form.executionProvider || !expectsLlmKey) {
+      setLlmKeys([]);
       return;
     }
 
@@ -857,7 +1128,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
       try {
         setIsLoadingLlmKeys(true);
         setLlmKeys([]);
-        const keys = await getContextJobsLlmKeys(form.executionProvider);
+        const keys = await getContextJobsLlmKeys(form.executionProvider, "llm");
         if (!mounted) return;
         setLlmKeys(keys);
 
@@ -908,54 +1179,84 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     return () => {
       mounted = false;
     };
-  }, [form.executionProvider, mode, plan]);
+  }, [expectsLlmKey, form.executionProvider, mode]);
 
   useEffect(() => {
-    if (plan !== "pro" || !form.llmKeyId) {
+    if (!expectsLlmKey) {
       setKeyModels([]);
       return;
     }
 
-    let mounted = true;
+    // BYOK path: models come from the selected key.
+    if (form.llmKeyId) {
+      let mounted = true;
 
-    const loadModels = async (): Promise<void> => {
-      try {
-        setIsLoadingKeyModels(true);
-        setKeyModels([]);
-        const models = await getContextJobsLlmKeyModels(form.llmKeyId);
-        if (!mounted) return;
-        setKeyModels(models);
-        setForm((current) => {
-          if (models.length === 0) {
-            return current;
+      const loadModels = async (): Promise<void> => {
+        try {
+          setIsLoadingKeyModels(true);
+          setKeyModels([]);
+          const models = await getContextJobsLlmKeyModels(form.llmKeyId);
+          if (!mounted) return;
+          setKeyModels(models);
+          setForm((current) => {
+            if (models.length === 0) {
+              return current;
+            }
+
+            if (models.some((model) => model.id === current.executionModel)) {
+              return current;
+            }
+
+            return {
+              ...current,
+              executionModel: models[0].id,
+            };
+          });
+        } catch (err) {
+          if (mounted) {
+            setError(err);
           }
-
-          if (models.some((model) => model.id === current.executionModel)) {
-            return current;
+        } finally {
+          if (mounted) {
+            setIsLoadingKeyModels(false);
           }
-
-          return {
-            ...current,
-            executionModel: models[0].id,
-          };
-        });
-      } catch (err) {
-        if (mounted) {
-          setError(err);
         }
-      } finally {
-        if (mounted) {
-          setIsLoadingKeyModels(false);
+      };
+
+      void loadModels();
+
+      return () => {
+        mounted = false;
+      };
+    }
+
+    // Trial on Jet's managed keys: models come from the provider catalog.
+    if (!requiresLlmKey && form.executionProvider) {
+      const catalogProvider = entitlements.providers.find(
+        (item) => item.provider === form.executionProvider,
+      );
+      const models = (catalogProvider?.models ?? []).map((model) => ({
+        id: model.id,
+        displayName: model.displayName,
+      }));
+      setKeyModels(models);
+      setForm((current) => {
+        if (models.length === 0) {
+          return current;
         }
-      }
-    };
+        if (models.some((model) => model.id === current.executionModel)) {
+          return current;
+        }
+        return {
+          ...current,
+          executionModel: models[0].id,
+        };
+      });
+      return;
+    }
 
-    void loadModels();
-
-    return () => {
-      mounted = false;
-    };
-  }, [form.llmKeyId, plan]);
+    setKeyModels([]);
+  }, [expectsLlmKey, requiresLlmKey, form.llmKeyId, form.executionProvider, entitlements.providers]);
 
   useEffect(() => {
     let mounted = true;
@@ -1021,12 +1322,19 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   const toolCatalog = useMemo<ToolPermissionSource[]>(
     () =>
       allowedTools.length
-        ? allowedTools.map((tool) => ({
-            id: tool.id,
-            label: tool.name,
-            readOnly: Boolean(tool.isReadOnly),
-            category: tool.category ?? null,
-          }))
+        ? allowedTools.map((tool) => {
+            const externalProvider = tool.externalProvider ?? null;
+            const requiresExternalKey = Boolean(externalProvider);
+            return {
+              id: tool.id,
+              label: tool.name,
+              readOnly: Boolean(tool.isReadOnly),
+              category: tool.category ?? null,
+              externalProvider,
+              hasUserKey: tool.hasUserKey !== false,
+              requiresExternalKey,
+            };
+          })
         : TOOL_PERMISSION_PRESETS,
     [allowedTools]
   );
@@ -1089,7 +1397,8 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     const relationshipCount = countJsonItems(form.relationshipsJson);
     const toolCount = countJsonItems(form.toolPermissionsJson);
     const checkCount = countJsonItems(form.validationRulesJson);
-    const memoryEnabled = parseJsonInput<Record<string, unknown>>(form.memoryConfigJson, {}).sessionMemory !== false;
+    const memoryConfig = parseJsonInput<Record<string, unknown>>(form.memoryConfigJson, {});
+    const memoryEnabled = Boolean(memoryConfig.projectMemory) || memoryConfig.sessionMemory !== false;
 
     return [
       { label: "Status", value: form.status },
@@ -1118,7 +1427,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     () =>
       {
         const selectableProviders = entitlements.providers
-          .filter((provider) => provider.selectable)
+          .filter((provider) => provider.selectable || (!requiresLlmKey && provider.models.length > 0))
           .map((provider) => ({
             value: provider.provider,
             label: provider.displayName,
@@ -1140,13 +1449,55 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
 
         return resolvedProviders;
       },
-    [entitlements.providers, form.executionProvider]
+    [entitlements.providers, form.executionProvider, requiresLlmKey]
   );
-  const selectedTrialModel = TRIAL_MODELS[form.executionProvider] || "Not set";
   const errorMessage = formatErrorMessage(error);
 
   const handleChange = <K extends keyof BuilderFormState>(key: K, value: BuilderFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleWorkflowTypeSelect = (nextType: string): void => {
+    if (nextType === form.workflowType) return;
+    setPendingWorkflowType(nextType);
+    setCategoryNotice(null);
+  };
+
+  const applyWorkflowTypeLabelOnly = (): void => {
+    if (!pendingWorkflowType) return;
+    setForm((current) => ({ ...current, workflowType: pendingWorkflowType }));
+    setCategoryNotice(
+      "Category label updated only. Tools and validation were left unchanged — confirm they still match this category before you run the job.",
+    );
+    setPendingWorkflowType(null);
+  };
+
+  const applyWorkflowTypeWithProfile = (): void => {
+    if (!pendingWorkflowType) return;
+    const nextType = pendingWorkflowType;
+    const profile = getWorkflowCategoryProfile(nextType);
+    setForm((current) => {
+      if (!profile) {
+        return { ...current, workflowType: nextType };
+      }
+      const existingRules = parseJsonInput<unknown[]>(current.validationRulesJson, []);
+      const nextRules = mergeSpecialtyValidationRules(
+        Array.isArray(existingRules) ? existingRules : [],
+        profile.specialtyRules,
+      );
+      return {
+        ...current,
+        workflowType: nextType,
+        toolPermissionsJson: JSON.stringify(profile.tools, null, 2),
+        validationRulesJson: JSON.stringify(nextRules, null, 2),
+      };
+    });
+    setCategoryNotice(
+      profile
+        ? `Applied ${nextType} profile: ${profile.summary}. Review Tools and Checks steps before saving.`
+        : `Category set to ${nextType}. No recommended tool/validation pack for this category — review Tools and Checks manually.`,
+    );
+    setPendingWorkflowType(null);
   };
 
   const updateJsonArrayField = <T,>(field: keyof Pick<BuilderFormState, "glossaryTermsJson" | "relationshipsJson" | "trustedSourcesJson" | "toolPermissionsJson" | "validationRulesJson">, nextItems: T[]): void => {
@@ -1156,9 +1507,38 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     }));
   };
 
-  const glossaryTerms = useMemo(() => parseJsonArray<GlossaryTermItem>(form.glossaryTermsJson), [form.glossaryTermsJson]);
-  const relationships = useMemo(() => parseJsonArray<RelationshipItem>(form.relationshipsJson), [form.relationshipsJson]);
-  const trustedSources = useMemo(() => parseJsonArray<TrustedSourceItem>(form.trustedSourcesJson), [form.trustedSourcesJson]);
+  const glossaryTerms = useMemo(() => {
+    return parseJsonArray<unknown>(form.glossaryTermsJson)
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const record = item as Record<string, unknown>;
+        const term =
+          (typeof record.term === "string" && record.term.trim()) ||
+          (typeof record.name === "string" && record.name.trim()) ||
+          "";
+        if (!term) return null;
+        return {
+          term,
+          definition: typeof record.definition === "string" ? record.definition : "",
+          category: typeof record.category === "string" && record.category.trim() ? record.category : "domain",
+        } satisfies GlossaryTermItem;
+      })
+      .filter((item): item is GlossaryTermItem => Boolean(item));
+  }, [form.glossaryTermsJson]);
+  const relationships = useMemo(
+    () =>
+      parseJsonArray<unknown>(form.relationshipsJson)
+        .map((item) => normalizeRelationshipItem(item))
+        .filter((item): item is RelationshipItem => Boolean(item)),
+    [form.relationshipsJson],
+  );
+  const trustedSources = useMemo(
+    () =>
+      parseJsonArray<unknown>(form.trustedSourcesJson)
+        .map((item) => normalizeTrustedSourceItem(item))
+        .filter((item): item is TrustedSourceItem => Boolean(item)),
+    [form.trustedSourcesJson],
+  );
   const toolPermissions = useMemo(
     () =>
       parseJsonArray<unknown>(form.toolPermissionsJson)
@@ -1166,7 +1546,48 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
         .filter((entry): entry is ToolPermissionItem => Boolean(entry)),
     [form.toolPermissionsJson, toolCatalog]
   );
+  const toolsMissingKeys = useMemo(
+    () =>
+      toolPermissions
+        .map((permission) => toolCatalog.find((tool) => tool.id === permission.toolId))
+        .filter((tool): tool is ToolPermissionSource => Boolean(tool?.requiresExternalKey && tool.hasUserKey === false)),
+    [toolCatalog, toolPermissions]
+  );
+  const categoryMismatch = useMemo(
+    () => detectWorkflowCategoryMismatch(form.workflowType, toolPermissions),
+    [form.workflowType, toolPermissions],
+  );
+  const pendingCategoryProfile = pendingWorkflowType
+    ? getWorkflowCategoryProfile(pendingWorkflowType)
+    : null;
+  const pendingCategoryLabel =
+    WORKFLOW_TYPES.find((item) => item.value === pendingWorkflowType)?.label || pendingWorkflowType;
   const validationRules = useMemo(() => parseJsonArray<ValidationRuleItem>(form.validationRulesJson), [form.validationRulesJson]);
+  const validationRuleDraftRequiresDescription = requiresValidationDescription(validationRuleDraft.type);
+  const validationRuleDraftIsProcurement = isProcurementValidationType(validationRuleDraft.type);
+  const validationRuleDraftDuplicate = useMemo(() => {
+    const candidate: ValidationRuleItem = {
+      name: validationRuleDraft.name.trim(),
+      type: validationRuleDraft.type,
+      severity: validationRuleDraft.severity,
+      description: validationRuleDraft.description.trim(),
+      enabled: true,
+    };
+    if (validationRuleDraftIsProcurement) {
+      candidate.checker = validationRuleDraft.checker;
+      candidate.params = buildProcurementParamsFromDraft(validationRuleDraft);
+    }
+    if (requiresValidationDescription(candidate.type) && !candidate.description) {
+      return false;
+    }
+    const fingerprint = validationRuleFingerprint(candidate);
+    return validationRules.some((rule) => validationRuleFingerprint(rule) === fingerprint);
+  }, [validationRuleDraft, validationRuleDraftIsProcurement, validationRules]);
+  const canAddValidationRule =
+    Boolean(validationRuleDraft.name.trim()) &&
+    (!validationRuleDraftRequiresDescription || Boolean(validationRuleDraft.description.trim())) &&
+    (!validationRuleDraftIsProcurement || Boolean(validationRuleDraft.checker.trim())) &&
+    !validationRuleDraftDuplicate;
   const retrievalConfig = useMemo(
     () =>
       parseJsonRecord<Record<string, unknown>>(form.retrievalConfigJson, {
@@ -1181,8 +1602,8 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   const memoryConfig = useMemo(
     () =>
       parseJsonRecord<Record<string, unknown>>(form.memoryConfigJson, {
-        sessionMemory: true,
-        projectMemory: false,
+        sessionMemory: false,
+        projectMemory: true,
         userProfileMemory: false,
         retentionDays: 30,
       }),
@@ -1216,8 +1637,9 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     const hasVectorConnection = form.retrievalMode !== "external" || form.vectorConnectionId.trim().length > 0;
     const hasExecutionProvider = form.executionProvider.trim().length > 0;
     const hasExecutionMode = form.executionMode.trim().length > 0;
-    const hasExecutionModel = plan === "trial" ? selectedTrialModel.trim().length > 0 : form.executionModel.trim().length > 0;
-    const hasLlmKey = plan === "pro" ? (llmKeys.length > 0 ? form.llmKeyId.trim().length > 0 : true) : true;
+    const hasExecutionModel = form.executionModel.trim().length > 0;
+    const hasLlmKey = requiresLlmKey ? form.llmKeyId.trim().length > 0 : true;
+    const hasRequiredToolKeys = toolsMissingKeys.length === 0;
 
     return (
       hasName &&
@@ -1227,9 +1649,10 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
       hasExecutionProvider &&
       hasExecutionMode &&
       hasExecutionModel &&
-      hasLlmKey
+      hasLlmKey &&
+      hasRequiredToolKeys
     );
-  }, [form, llmKeys.length, plan, selectedTrialModel]);
+  }, [requiresLlmKey, form, toolsMissingKeys.length]);
 
   const isSaveDisabled = isSaving || (mode === "edit" && !hasUnsavedChanges) || !isJobReadyToSave;
 
@@ -1238,7 +1661,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
       ...current,
       executionProvider: provider,
       llmKeyId: "",
-      executionModel: plan === "trial" ? (TRIAL_MODELS[provider] ?? "") : "",
+      executionModel: "",
     }));
   };
 
@@ -1304,12 +1727,16 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     if (!relationshipDraft.source.trim() || !relationshipDraft.target.trim()) return;
     if (relationshipDraft.source === "__custom__" || relationshipDraft.target === "__custom__") return;
 
+    const source = relationshipDraft.source.trim();
+    const target = relationshipDraft.target.trim();
     const nextItems = [
       ...relationships,
       {
-        source: relationshipDraft.source.trim(),
+        source,
         relation: relationshipDraft.relation,
-        target: relationshipDraft.target.trim(),
+        target,
+        fromTerm: source,
+        toTerm: target,
       },
     ];
     updateJsonArrayField("relationshipsJson", nextItems);
@@ -1321,18 +1748,17 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   };
 
   const addTrustedSource = (): void => {
-    if (!trustedSourceDraft.name.trim()) return;
+    if (!trustedSourceDraft.value.trim()) return;
 
-    const nextItems = [
-      ...trustedSources,
-      {
-        name: trustedSourceDraft.name.trim(),
-        url: trustedSourceDraft.url.trim(),
-        kind: trustedSourceDraft.kind,
-      },
-    ];
+    const value = trustedSourceDraft.value.trim();
+    const key = trustedSourceDraft.key.trim();
+    const nextItem: TrustedSourceItem = key
+      ? { key, value, op: trustedSourceDraft.op }
+      : { name: value, value, op: "contains" };
+
+    const nextItems = [...trustedSources, nextItem];
     updateJsonArrayField("trustedSourcesJson", nextItems);
-    setTrustedSourceDraft({ name: "", url: "", kind: trustedSourceDraft.kind });
+    setTrustedSourceDraft({ key: "", value: "", op: "eq" });
   };
 
   const removeTrustedSource = (index: number): void => {
@@ -1349,6 +1775,13 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     }
 
     const preset = resolveToolPermissionSource(toolId, toolCatalog);
+    if (preset?.requiresExternalKey && preset.hasUserKey === false) {
+      setError(
+        `${preset.label} requires a ${preset.externalProvider || "provider"} key. Add it under Context Jobs → Keys first.`
+      );
+      return;
+    }
+
     updateJsonArrayField("toolPermissionsJson", [
       ...toolPermissions,
       {
@@ -1360,19 +1793,56 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   };
 
   const addValidationRule = (): void => {
-    if (!validationRuleDraft.name.trim()) return;
+    const name = validationRuleDraft.name.trim();
+    const description = validationRuleDraft.description.trim();
+    if (!name) {
+      setValidationRuleError("Enter a rule name.");
+      return;
+    }
+    if (validationRuleDraftRequiresDescription && !description) {
+      setValidationRuleError("Custom, quality, and safety rules need a requirement description for the judge.");
+      return;
+    }
 
-    const nextItems = [
-      ...validationRules,
-      {
-        name: validationRuleDraft.name.trim(),
-        type: validationRuleDraft.type,
-        severity: validationRuleDraft.severity,
-        enabled: true,
-      },
-    ];
-    updateJsonArrayField("validationRulesJson", nextItems);
-    setValidationRuleDraft({ name: "", type: validationRuleDraft.type, severity: validationRuleDraft.severity });
+    const candidate: ValidationRuleItem = {
+      name,
+      type: validationRuleDraft.type,
+      severity: validationRuleDraft.severity,
+      enabled: true,
+      ...(validationRuleDraftRequiresDescription && description ? { description } : {}),
+    };
+    if (validationRuleDraftIsProcurement) {
+      const checker = validationRuleDraft.checker.trim();
+      if (!checker) {
+        setValidationRuleError("Select a procurement checker.");
+        return;
+      }
+      const params = buildProcurementParamsFromDraft(validationRuleDraft);
+      if (checker === "mandatory_clause" && !(params.requiredClauseIds as string[] | undefined)?.length) {
+        setValidationRuleError("Enter at least one required clause id for mandatory clause checks.");
+        return;
+      }
+      candidate.checker = checker;
+      candidate.params = params;
+      candidate.id = `proc_${checker}`;
+    }
+    if (validationRules.some((rule) => validationRuleFingerprint(rule) === validationRuleFingerprint(candidate))) {
+      setValidationRuleError(validationRuleDuplicateMessage(candidate.type));
+      return;
+    }
+
+    updateJsonArrayField("validationRulesJson", [...validationRules, candidate]);
+    setValidationRuleDraft({
+      name: "",
+      type: validationRuleDraft.type,
+      severity: validationRuleDraft.severity,
+      description: "",
+      checker: validationRuleDraft.checker,
+      thresholdPercent: validationRuleDraft.thresholdPercent,
+      maxRiskTier: validationRuleDraft.maxRiskTier,
+      requiredClauseIds: validationRuleDraft.requiredClauseIds,
+    });
+    setValidationRuleError(null);
   };
 
   const removeValidationRule = (index: number): void => {
@@ -1410,8 +1880,10 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     const imported = getTrustedSourceFromAsset(asset);
     if (!imported) return;
 
-    const existing = new Set(trustedSources.map((item) => item.name.toLowerCase()));
-    if (existing.has(imported.name.toLowerCase())) return;
+    const existing = new Set(
+      trustedSources.map((item) => `${item.key || ""}|${item.value}`.toLowerCase()),
+    );
+    if (existing.has(`${imported.key || ""}|${imported.value}`.toLowerCase())) return;
     updateJsonArrayField("trustedSourcesJson", [...trustedSources, imported]);
   };
 
@@ -1452,7 +1924,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     }
 
     if (!form.workflowType.trim()) {
-      setError("Workflow type is required.");
+      setError("Job category is required.");
       return;
     }
 
@@ -1476,8 +1948,27 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
       return;
     }
 
-    if (plan === "pro" && llmKeys.length > 0 && !form.llmKeyId.trim()) {
-      setError("Select an API key for the chosen provider.");
+    if (requiresLlmKey && !form.llmKeyId.trim()) {
+      setError(
+        llmKeys.length > 0
+          ? "Select an API key for the chosen provider."
+          : "Add an LLM key before saving. Open Context Jobs keys to create one."
+      );
+      return;
+    }
+
+    if (!form.executionModel.trim()) {
+      setError("Execution model is required.");
+      return;
+    }
+
+    if (toolsMissingKeys.length > 0) {
+      const details = toolsMissingKeys
+        .map((tool) => `${tool.label} (${tool.externalProvider || "key required"})`)
+        .join(", ");
+      setError(
+        `Add the required tool keys before saving: ${details}. Open Context Jobs → Keys to create them.`
+      );
       return;
     }
 
@@ -1541,7 +2032,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
             <p className="text-sm leading-6 text-slate-600 sm:text-base">
               {mode === "edit"
                 ? "Adjust the builder steps, keep the summary map in view, and save or publish from the review step."
-                : "Use the same builder flow as the prototype: a guided setup with a live summary and a clean draft-to-publish flow."}
+                : "A guided setup with a live summary and a clean draft-to-publish flow."}
             </p>
           </div>
 
@@ -1555,6 +2046,19 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
         {errorMessage ? (
           <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-800">
             <p className="text-sm font-medium">{errorMessage}</p>
+          </div>
+        ) : null}
+
+        {categoryNotice ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            <p className="text-sm font-medium">{categoryNotice}</p>
+          </div>
+        ) : null}
+
+        {categoryMismatch ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Category mismatch</p>
+            <p className="mt-2 text-sm font-medium">{categoryMismatch}</p>
           </div>
         ) : null}
 
@@ -1602,14 +2106,21 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                       onChange={(e) => handleChange("name", e.target.value)}
                     />
                   </Field>
-                  <Field label="Workflow type" required>
-                    <select className={formInputClass} value={form.workflowType} onChange={(e) => handleChange("workflowType", e.target.value)}>
+                  <Field label="Job category" required>
+                    <select
+                      className={formInputClass}
+                      value={form.workflowType}
+                      onChange={(e) => handleWorkflowTypeSelect(e.target.value)}
+                    >
                       {WORKFLOW_TYPES.map((workflow) => (
                         <option key={workflow.value} value={workflow.value}>
                           {workflow.label}
                         </option>
                       ))}
                     </select>
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      Used for tool guidance and validation tone. Changing it asks whether to update tools and checks so they stay in sync.
+                    </p>
                   </Field>
                   <Field label="Description" className="md:col-span-2">
                     <textarea
@@ -1665,12 +2176,17 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                     />
                   </Field>
                   <Field label="Escalation policy">
-                    <input
+                    <select
                       className={formInputClass}
-                      placeholder="Enter escalation policy"
-                      value={form.escalationPolicy}
+                      value={normalizeEscalationPolicy(form.escalationPolicy)}
                       onChange={(e) => handleChange("escalationPolicy", e.target.value)}
-                    />
+                    >
+                      {ESCALATION_POLICIES.map((option) => (
+                        <option key={option.value || "unset"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
                   <Field label="Execution mode" required>
                     <select className={formInputClass} value={form.executionMode} onChange={(e) => handleExecutionModeChange(e.target.value)}>
@@ -1686,6 +2202,9 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
 
               {step === 2 ? (
                 <div className="space-y-4">
+                  <p className="text-sm text-slate-500">
+                    Define terms the job should use consistently. They are injected at run time and required terms are validated in the output.
+                  </p>
                   <Field label={`Glossary terms (${glossaryTerms.length})`} className="space-y-4">
                     {glossaryAssets.length > 0 ? (
                       <select className={formInputClass} onChange={(e) => importGlossaryAsset(e.target.value)} value="">
@@ -1906,6 +2425,14 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                     </Link>
                   </div>
                   <Field label={`Trusted sources (${trustedSources.length})`} className="md:col-span-2 space-y-4">
+                    <p className="text-sm text-slate-500">
+                      Scope retrieval with metadata key + value (exact match pushes a store-side filter when the
+                      vector provider supports it). Leave the key empty to match ingested{" "}
+                      <span className="font-medium text-slate-700">file</span> /{" "}
+                      <span className="font-medium text-slate-700">source</span> /{" "}
+                      <span className="font-medium text-slate-700">url</span> labels by substring. Use the same
+                      keys you stamp when ingesting documents.
+                    </p>
                     {sourceProfileAssets.length > 0 ? (
                       <select className={formInputClass} onChange={(e) => importTrustedSourceAsset(e.target.value)} value="">
                         <option value="">Import from source profile asset</option>
@@ -1916,46 +2443,57 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                         ))}
                       </select>
                     ) : null}
-                    <div className="grid gap-3 md:grid-cols-3">
+                    <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-slate-700">Metadata key</span>
                         <input
                           className={formInputClass}
-                          placeholder="Enter a source name"
-                          value={trustedSourceDraft.name}
-                          onChange={(e) => setTrustedSourceDraft((current) => ({ ...current, name: e.target.value }))}
+                          placeholder="e.g. contractId (optional)"
+                          value={trustedSourceDraft.key}
+                          onChange={(e) => setTrustedSourceDraft((current) => ({ ...current, key: e.target.value }))}
                         />
+                      </label>
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-slate-700">Value</span>
                         <input
                           className={formInputClass}
-                          placeholder="Enter a URL"
-                          value={trustedSourceDraft.url}
-                          onChange={(e) => setTrustedSourceDraft((current) => ({ ...current, url: e.target.value }))}
+                          placeholder="e.g. ACME-MSA-2024-001"
+                          value={trustedSourceDraft.value}
+                          onChange={(e) => setTrustedSourceDraft((current) => ({ ...current, value: e.target.value }))}
                         />
-                      <select
-                        className={formInputClass}
-                        value={trustedSourceDraft.kind}
-                        onChange={(e) => setTrustedSourceDraft((current) => ({ ...current, kind: e.target.value }))}
-                      >
-                        {SOURCE_KINDS.map((kind) => (
-                          <option key={kind} value={kind}>
-                            {kind}
-                          </option>
-                        ))}
-                      </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-slate-700">Match</span>
+                        <select
+                          className={formInputClass}
+                          value={trustedSourceDraft.op}
+                          onChange={(e) =>
+                            setTrustedSourceDraft((current) => ({
+                              ...current,
+                              op: e.target.value === "contains" ? "contains" : "eq",
+                            }))
+                          }
+                        >
+                          <option value="eq">Exact</option>
+                          <option value="contains">Contains</option>
+                        </select>
+                      </label>
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          className="rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                          onClick={addTrustedSource}
+                          disabled={!trustedSourceDraft.value.trim()}
+                        >
+                          Add
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
-                      onClick={addTrustedSource}
-                      disabled={!trustedSourceDraft.name.trim()}
-                    >
-                      Add trusted source
-                    </button>
                     <div className="space-y-2">
                       {trustedSources.map((source, index) => (
-                        <div key={`${source.name}-${index}`} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <div key={`${source.key || "legacy"}-${source.value}-${index}`} className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                           <div>
-                            <p className="text-sm font-semibold text-slate-900">{source.name}</p>
-                            <p className="text-xs text-slate-500">{source.kind}</p>
-                            {source.url ? <p className="mt-1 text-sm text-slate-600">{source.url}</p> : null}
+                            <p className="text-sm font-semibold text-slate-900">{trustedSourceLabel(source)}</p>
                           </div>
                           <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => removeTrustedSource(index)}>
                             Remove
@@ -1964,7 +2502,12 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                       ))}
                     </div>
                   </Field>
-                  <Field label={`Linked assets (${form.assetIds.length})`} className="md:col-span-2">
+                  <Field label={`Linked assets (${form.assetIds.length})`} className="md:col-span-2 space-y-3">
+                    <p className="text-sm text-slate-500">
+                      Choose assets to import on save. Their content is copied into this job&apos;s fields
+                      (glossary, tools, checks, etc.). This is a one-time merge — not a live link — and
+                      re-importing the same content is deduped where possible.
+                    </p>
                     <select className={formInputClass} onChange={(e) => handleAssetSelection(e.target.value)} value="">
                       <option value="">{isLoadingAssets ? "Loading assets..." : "Select an asset to link"}</option>
                       {linkedAssetOptions.map((asset) => (
@@ -2037,29 +2580,28 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                       <span className="text-sm text-slate-700">Require human approval for this job</span>
                     </label>
                   </Field>
-                  <Field label="Policy profile">
-                    <input
-                      className={formInputClass}
-                      placeholder="Enter a policy profile"
-                      value={form.policyProfile}
-                      onChange={(e) => handleChange("policyProfile", e.target.value)}
-                    />
+                  <Field label="Strict compliance" className="md:col-span-2">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={form.policyProfile.trim() === "strict_compliance"}
+                        onChange={(e) => handleChange("policyProfile", e.target.checked ? "strict_compliance" : "")}
+                      />
+                      <span className="text-sm text-slate-700">Block outputs with AI disclaimers or hedging language</span>
+                    </label>
                   </Field>
                   <Field label="Memory config" className="md:col-span-2 space-y-4">
-                    <div className="grid gap-3 md:grid-cols-3">
+                    <div className="grid gap-3 md:grid-cols-2">
                       <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                         <input
                           type="checkbox"
-                          checked={memoryConfig.sessionMemory !== false}
-                          onChange={(e) => updateMemoryConfig({ sessionMemory: e.target.checked })}
-                        />
-                        <span className="text-sm text-slate-700">Session memory</span>
-                      </label>
-                      <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(memoryConfig.projectMemory)}
-                          onChange={(e) => updateMemoryConfig({ projectMemory: e.target.checked })}
+                          checked={Boolean(memoryConfig.projectMemory) || memoryConfig.sessionMemory !== false}
+                          onChange={(e) =>
+                            updateMemoryConfig({
+                              projectMemory: e.target.checked,
+                              sessionMemory: false,
+                            })
+                          }
                         />
                         <span className="text-sm text-slate-700">Project memory</span>
                       </label>
@@ -2071,7 +2613,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                         />
                         <span className="text-sm text-slate-700">User profile memory</span>
                       </label>
-                      <label className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-3">
+                      <label className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2">
                         <span className="mb-2 block text-sm text-slate-700">Retention days</span>
                         <input
                           type="number"
@@ -2096,29 +2638,35 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                       ))}
                     </select>
                   </Field>
-                  {plan === "trial" ? (
-                    <Field label="Execution model" required>
-                      <input className={`${formInputClass} bg-slate-50`} value={selectedTrialModel} readOnly />
-                    </Field>
-                  ) : (
-                    <Field label="Execution model" required>
-                      <select className={formInputClass} value={form.executionModel} onChange={(e) => handleChange("executionModel", e.target.value)}>
-                        <option value="">{isLoadingKeyModels ? "Loading models..." : form.llmKeyId ? "Select a model" : "Pick a key first"}</option>
-                        {(keyModels.length ? keyModels : [{ id: form.executionModel || "", displayName: form.executionModel || "" }]).filter((model) => Boolean(model.id)).map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.displayName}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {isLoadingKeyModels ? "Loading models for the selected key..." : form.llmKeyId ? "Choose a model for the selected API key." : "Pick a key first to load the matching models."}
-                      </p>
-                    </Field>
-                  )}
-                      {plan === "pro" ? (
-                    <Field label="LLM key" required>
+                  <Field label="Execution model" required>
+                    <select className={formInputClass} value={form.executionModel} onChange={(e) => handleChange("executionModel", e.target.value)}>
+                      <option value="">{isLoadingKeyModels ? "Loading models..." : (form.llmKeyId || !requiresLlmKey) ? "Select a model" : "Pick a key first"}</option>
+                      {(keyModels.length ? keyModels : [{ id: form.executionModel || "", displayName: form.executionModel || "" }]).filter((model) => Boolean(model.id)).map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.displayName}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {isLoadingKeyModels
+                        ? "Loading models for the selected key..."
+                        : form.llmKeyId
+                        ? "Choose a model for the selected API key."
+                        : !requiresLlmKey
+                        ? "Trial runs on Jet's managed models. Add your own key below to unlock more models."
+                        : "Pick a key first to load the matching models."}
+                    </p>
+                  </Field>
+                  {expectsLlmKey ? (
+                    <Field label={requiresLlmKey ? "LLM key" : "LLM key (optional)"} required={requiresLlmKey}>
                       <select className={formInputClass} value={form.llmKeyId} onChange={(e) => handleLlmKeyChange(e.target.value)}>
-                        <option value="">{isLoadingLlmKeys ? "Loading API keys..." : "Select an API key"}</option>
+                        <option value="">
+                          {isLoadingLlmKeys
+                            ? "Loading API keys..."
+                            : requiresLlmKey
+                            ? "Select an API key"
+                            : "Use Jet's managed key"}
+                        </option>
                         {llmKeys.map((key) => (
                           <option key={key.id} value={key.id}>
                             {getLlmKeyLabel(key)}
@@ -2128,9 +2676,27 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                       <p className="mt-2 text-xs text-slate-500">
                         {isLoadingLlmKeys
                           ? "Loading keys for the selected provider..."
+                          : !requiresLlmKey
+                          ? (
+                            <>
+                              On trial you can run on Jet&apos;s managed keys — no key needed. Want your own models or higher limits?{" "}
+                              <Link href="/context-jobs/keys" className="font-semibold text-slate-900 underline underline-offset-2 hover:text-slate-700">
+                                Add an LLM key
+                              </Link>
+                              .
+                            </>
+                          )
                           : llmKeys.length
                           ? "Choose the friendly key label; the app keeps the ID hidden."
-                          : "No saved API keys were found for this provider."}
+                          : (
+                            <>
+                              No saved LLM keys were found for this provider.{" "}
+                              <Link href="/context-jobs/keys" className="font-semibold text-slate-900 underline underline-offset-2 hover:text-slate-700">
+                                Add an LLM key
+                              </Link>
+                              .
+                            </>
+                          )}
                       </p>
                     </Field>
                   ) : null}
@@ -2138,22 +2704,51 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                     <p className="text-xs text-slate-500">
                       {isLoadingTools
                         ? "Loading allowed tools from the backend..."
-                        : "Select one or more tools. The app stores the JSON objects the backend expects."}
+                        : "Select one or more tools. Tools that need an external API key stay locked until you add that key."}
                     </p>
+                    {toolsMissingKeys.length > 0 ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                        Selected tools need keys:{" "}
+                        {toolsMissingKeys.map((tool) => tool.label).join(", ")}.{" "}
+                        <Link href="/context-jobs/keys" className="font-semibold underline underline-offset-2">
+                          Add tool keys
+                        </Link>
+                      </div>
+                    ) : null}
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {toolCatalog.map((permission) => {
                         const checked = toolPermissions.some((item) => item.toolId === permission.id);
+                        const locked = Boolean(permission.requiresExternalKey && permission.hasUserKey === false);
                         return (
                           <label
                             key={permission.id}
                             className={`flex items-center justify-between rounded-2xl border px-4 py-3 ${
-                              checked ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-slate-50 text-slate-700"
+                              locked
+                                ? "cursor-not-allowed border-amber-200 bg-amber-50 text-amber-900"
+                                : checked
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-slate-200 bg-slate-50 text-slate-700"
                             }`}
                           >
-                            <span className="text-sm font-medium">{permission.label}</span>
+                            <span className="pr-3">
+                              <span className="block text-sm font-medium">{permission.label}</span>
+                              {locked ? (
+                                <span className="mt-1 block text-xs opacity-90">
+                                  Requires {permission.externalProvider} key —{" "}
+                                  <Link href="/context-jobs/keys" className="underline underline-offset-2">
+                                    add key
+                                  </Link>
+                                </span>
+                              ) : permission.requiresExternalKey ? (
+                                <span className={`mt-1 block text-xs ${checked ? "text-slate-300" : "text-slate-500"}`}>
+                                  Uses {permission.externalProvider} key
+                                </span>
+                              ) : null}
+                            </span>
                             <input
                               type="checkbox"
                               checked={checked}
+                              disabled={locked && !checked}
                               onChange={() => toggleToolPermission(permission.id)}
                               className="h-4 w-4"
                             />
@@ -2180,41 +2775,185 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
               {step === 7 ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label={`Validation rules (${validationRules.length})`} className="md:col-span-2 space-y-4">
-                    <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                      <input
-                        className={formInputClass}
-                        placeholder="Enter a rule name"
-                        value={validationRuleDraft.name}
-                        onChange={(e) => setValidationRuleDraft((current) => ({ ...current, name: e.target.value }))}
-                      />
-                      <select
-                        className={formInputClass}
-                        value={validationRuleDraft.type}
-                        onChange={(e) => setValidationRuleDraft((current) => ({ ...current, type: e.target.value }))}
-                      >
-                        {VALIDATION_TYPES.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        className={formInputClass}
-                        value={validationRuleDraft.severity}
-                        onChange={(e) => setValidationRuleDraft((current) => ({ ...current, severity: e.target.value }))}
-                      >
-                        {VALIDATION_SEVERITIES.map((severity) => (
-                          <option key={severity} value={severity}>
-                            {severity}
-                          </option>
-                        ))}
-                      </select>
+                    <p className="text-xs text-slate-500">
+                      Checks run after the agent finishes. Built-in types use fixed logic; procurement runs domain checkers on tool output; custom, quality, and safety use an LLM judge requirement.
+                    </p>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Rule name</span>
+                        <input
+                          className={formInputClass}
+                          placeholder="e.g. Citation coverage"
+                          value={validationRuleDraft.name}
+                          onChange={(e) => {
+                            setValidationRuleError(null);
+                            setValidationRuleDraft((current) => ({ ...current, name: e.target.value }));
+                          }}
+                        />
+                      </label>
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Check type</span>
+                        <select
+                          className={formInputClass}
+                          value={validationRuleDraft.type}
+                          onChange={(e) => {
+                            setValidationRuleError(null);
+                            const nextType = e.target.value;
+                            const preset = isProcurementValidationType(nextType)
+                              ? procurementCheckerPreset(PROCUREMENT_CHECKERS[0].value)
+                              : null;
+                            setValidationRuleDraft((current) => ({
+                              ...current,
+                              type: nextType,
+                              description: requiresValidationDescription(nextType) ? current.description : "",
+                              checker: preset?.value ?? current.checker,
+                              name: current.name || preset?.defaultName || current.name,
+                              thresholdPercent: "15",
+                              maxRiskTier: "medium",
+                              requiredClauseIds: "liability_cap, termination, data_protection",
+                            }));
+                          }}
+                        >
+                          {VALIDATION_TYPES.map((type) => (
+                            <option key={type.value} value={type.value}>
+                              {type.label}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="block text-xs text-slate-500">
+                          {VALIDATION_TYPES.find((type) => type.value === validationRuleDraft.type)?.hint}
+                        </span>
+                      </label>
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Severity</span>
+                        <select
+                          className={formInputClass}
+                          value={validationRuleDraft.severity}
+                          onChange={(e) => {
+                            setValidationRuleError(null);
+                            setValidationRuleDraft((current) => ({ ...current, severity: e.target.value }));
+                          }}
+                        >
+                          {VALIDATION_SEVERITIES.map((severity) => (
+                            <option key={severity.value} value={severity.value}>
+                              {severity.label}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="block text-xs text-slate-500">
+                          {VALIDATION_SEVERITIES.find((severity) => severity.value === validationRuleDraft.severity)?.hint}
+                        </span>
+                      </label>
                     </div>
+                    {validationRuleDraftRequiresDescription ? (
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-slate-700">Requirement description (required)</span>
+                        <textarea
+                          className={`${formTextareaClass} min-h-[96px]`}
+                          placeholder="Describe exactly what the judge should verify, e.g. Flag any pricing claim that lacks a supporting source citation."
+                          value={validationRuleDraft.description}
+                          onChange={(e) => {
+                            setValidationRuleError(null);
+                            setValidationRuleDraft((current) => ({ ...current, description: e.target.value }));
+                          }}
+                        />
+                        <span className="block text-xs text-slate-500">
+                          Custom, quality, and safety rules send this text to the LLM judge after the run. Name is only a label.
+                        </span>
+                      </label>
+                    ) : validationRuleDraftIsProcurement ? (
+                      <div className="space-y-3 rounded-2xl border border-teal-200 bg-teal-50/60 p-4">
+                        <label className="block space-y-2">
+                          <span className="text-sm font-medium text-slate-700">Procurement checker (required)</span>
+                          <select
+                            className={formInputClass}
+                            value={validationRuleDraft.checker}
+                            onChange={(e) => {
+                              setValidationRuleError(null);
+                              const nextChecker = e.target.value;
+                              const preset = procurementCheckerPreset(nextChecker);
+                              setValidationRuleDraft((current) => ({
+                                ...current,
+                                checker: nextChecker,
+                                name: current.name || preset.defaultName,
+                              }));
+                            }}
+                          >
+                            {PROCUREMENT_CHECKERS.map((checker) => (
+                              <option key={checker.value} value={checker.value}>
+                                {checker.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="block text-xs text-slate-600">
+                            {procurementCheckerPreset(validationRuleDraft.checker).hint}
+                          </span>
+                        </label>
+                        {validationRuleDraft.checker === "risk_threshold" ? (
+                          <label className="block space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Max allowed risk tier</span>
+                            <select
+                              className={formInputClass}
+                              value={validationRuleDraft.maxRiskTier}
+                              onChange={(e) => {
+                                setValidationRuleError(null);
+                                setValidationRuleDraft((current) => ({ ...current, maxRiskTier: e.target.value }));
+                              }}
+                            >
+                              {RISK_TIER_OPTIONS.map((tier) => (
+                                <option key={tier} value={tier}>
+                                  {tier}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        {validationRuleDraft.checker === "rate_benchmark" ? (
+                          <label className="block space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Variance threshold (%)</span>
+                            <input
+                              type="number"
+                              min={1}
+                              className={formInputClass}
+                              value={validationRuleDraft.thresholdPercent}
+                              onChange={(e) => {
+                                setValidationRuleError(null);
+                                setValidationRuleDraft((current) => ({ ...current, thresholdPercent: e.target.value }));
+                              }}
+                            />
+                          </label>
+                        ) : null}
+                        {validationRuleDraft.checker === "mandatory_clause" ? (
+                          <label className="block space-y-2">
+                            <span className="text-sm font-medium text-slate-700">Required clause ids</span>
+                            <textarea
+                              className={`${formTextareaClass} min-h-[72px]`}
+                              placeholder="liability_cap, termination, data_protection"
+                              value={validationRuleDraft.requiredClauseIds}
+                              onChange={(e) => {
+                                setValidationRuleError(null);
+                                setValidationRuleDraft((current) => ({ ...current, requiredClauseIds: e.target.value }));
+                              }}
+                            />
+                            <span className="block text-xs text-slate-600">Comma-separated clause ids checked against contract-analyzer output.</span>
+                          </label>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                        {VALIDATION_TYPES.find((type) => type.value === validationRuleDraft.type)?.hint}. This check type uses fixed backend logic — no extra requirement text is needed.
+                      </p>
+                    )}
+                    {validationRuleError ? (
+                      <p className="text-sm text-rose-700">{validationRuleError}</p>
+                    ) : validationRuleDraftDuplicate ? (
+                      <p className="text-sm text-amber-800">{validationRuleDuplicateMessage(validationRuleDraft.type)}</p>
+                    ) : null}
                     <button
                       type="button"
                       className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                       onClick={addValidationRule}
-                      disabled={!validationRuleDraft.name.trim()}
+                      disabled={!canAddValidationRule}
                     >
                       Add validation rule
                     </button>
@@ -2226,6 +2965,12 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                             <p className="text-xs text-slate-500">
                               {rule.type} · {rule.severity}
                             </p>
+                            {rule.description && requiresValidationDescription(rule.type) ? (
+                              <p className="mt-1 text-xs leading-5 text-slate-600">{rule.description}</p>
+                            ) : null}
+                            {formatProcurementRuleSummary(rule) ? (
+                              <p className="mt-1 text-xs leading-5 text-slate-600">{formatProcurementRuleSummary(rule)}</p>
+                            ) : null}
                           </div>
                           <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => removeValidationRule(index)}>
                             Remove
@@ -2369,12 +3114,56 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white/70 p-6">
               <p className="text-sm font-semibold text-slate-900">Builder notes</p>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                This builder now covers the core slice 4 flow: create, edit, publish, and the live summary view used in the prototype.
+                Create, edit, and publish jobs with a live summary map available throughout the builder.
               </p>
             </div>
           </aside>
         </div>
       </div>
+
+      {pendingWorkflowType ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-4 sm:items-center">
+          <div className="w-full max-w-lg rounded-[2rem] border border-white/70 bg-white p-6 shadow-xl">
+            <h2 className="text-xl font-semibold text-slate-900">Change job category?</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Switching to <span className="font-semibold text-slate-900">{pendingCategoryLabel}</span> can leave
+              tools and validation out of sync unless you apply the recommended profile.
+            </p>
+            {pendingCategoryProfile ? (
+              <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                Recommended: {pendingCategoryProfile.summary}
+              </p>
+            ) : (
+              <p className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                No packaged tool/validation profile for this category. You can still change the label and review Tools/Checks yourself.
+              </p>
+            )}
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setPendingWorkflowType(null)}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={applyWorkflowTypeLabelOnly}
+                className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+              >
+                Change label only
+              </button>
+              <button
+                type="button"
+                onClick={applyWorkflowTypeWithProfile}
+                className="rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+              >
+                {pendingCategoryProfile ? "Apply recommended profile" : "Change category"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

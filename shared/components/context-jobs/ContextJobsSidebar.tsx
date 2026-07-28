@@ -91,6 +91,15 @@ function GuideIcon() {
   );
 }
 
+function AlertsIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 4a5 5 0 0 1 5 5v2.2l1.4 2.8a1 1 0 0 1-.9 1.5H6.5a1 1 0 0 1-.9-1.5L7 11.2V9a5 5 0 0 1 5-5z" />
+      <path d="M10 18a2 2 0 0 0 4 0" />
+    </svg>
+  );
+}
+
 const navigation: SidebarItem[] = [
   { label: "Home", href: "/context-jobs", description: "Dashboard", icon: HomeIcon, exact: true },
   { label: "Context Jobs", href: "/context-jobs/jobs", description: "Jobs library", icon: JobsIcon },
@@ -98,6 +107,7 @@ const navigation: SidebarItem[] = [
   { label: "Keys", href: "/context-jobs/keys", description: "BYOK keys", icon: KeysIcon },
   { label: "Vector DB", href: "/context-jobs/vector-connections", description: "External KB", icon: VectorDbIcon },
   { label: "Runs", href: "/context-jobs/runs", description: "Run history", icon: RunsIcon },
+  { label: "Alerts", href: "/context-jobs/procurement/alerts", description: "Expiry alerts", icon: AlertsIcon },
   { label: "Assets", href: "/context-jobs/assets", description: "Shared assets", icon: AssetsIcon },
   { label: "User Guide", href: "/context-jobs/user-guide", description: "How it works", icon: GuideIcon },
 ];

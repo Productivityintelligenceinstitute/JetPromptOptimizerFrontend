@@ -12,13 +12,15 @@ export default function LayoutWrapper({
     const pathname = usePathname();
     const isAuthPage = pathname === "/signup" || pathname === "/login" || pathname === "/get-started" || pathname.startsWith("/chat");
     const isAdminPage = pathname?.startsWith("/admin");
+    // Match chat: app shells with a fixed sidebar should not render the marketing footer.
     const isContextJobsPage = pathname?.startsWith("/context-jobs");
+    const showFooter = !isAuthPage && !isAdminPage && !isContextJobsPage;
 
     return (
         <>
             {!isAuthPage && !isAdminPage && <Navbar />}
             {children}
-            {!isAuthPage && !isAdminPage && <Footer className={isContextJobsPage ? "md:pl-64" : ""} />}
+            {showFooter && <Footer />}
         </>
     );
 }

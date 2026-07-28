@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AuthGuard from "@/shared/components/auth/AuthGuard";
 import {
@@ -15,6 +15,17 @@ import {
   type ContextJobRunStartResponse,
 } from "@/shared/api/contextJobs";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
+
+const liveRunStates = new Set([
+  "queued",
+  "planning",
+  "retrieving",
+  "executing",
+  "validating",
+  "awaiting_tool_approval",
+  "awaiting_memory_approval",
+  "repair",
+]);
 
 const stateMeta: Record<string, { label: string; className: string; dotClass: string }> = {
   queued: { label: "Queued", className: "bg-slate-100 text-slate-700", dotClass: "bg-slate-400" },
@@ -91,59 +102,106 @@ function ContextJobsRunsContent() {
   const [runComposerError, setRunComposerError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pollWarning, setPollWarning] = useState<string | null>(null);
+  const [startedRunId, setStartedRunId] = useState<string | null>(null);
+  const loadInFlightRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
 
   useEffect(() => {
-    let mounted = true;
+    const started = new URLSearchParams(window.location.search).get("started");
+    if (started?.trim()) {
+      setStartedRunId(started.trim());
+    }
+  }, []);
 
-    const loadRuns = async (): Promise<void> => {
-      if (entitlements.status === "failed") {
-        if (mounted) {
-          setError("Failed to load Context Jobs access information.");
-          setIsLoading(false);
-        }
-        return;
-      }
+  const loadRuns = useCallback(async (opts?: { quiet?: boolean }): Promise<void> => {
+    if (loadInFlightRef.current) {
+      return;
+    }
 
-      if (entitlements.status !== "succeeded") {
-        return;
-      }
+    if (entitlements.status === "failed") {
+      setError("Failed to load Context Jobs access information.");
+      setIsLoading(false);
+      return;
+    }
 
-      if (!entitlements.contextJobsEnabled) {
-        if (mounted) {
-          setIsLoading(false);
-        }
-        return;
-      }
+    if (entitlements.status !== "succeeded") {
+      return;
+    }
 
-      try {
+    if (!entitlements.contextJobsEnabled) {
+      setIsLoading(false);
+      return;
+    }
+
+    loadInFlightRef.current = true;
+    const quiet = Boolean(opts?.quiet);
+    try {
+      if (!quiet) {
         setIsLoading(true);
-        setError(null);
-        const [runData, jobData, queueData] = await Promise.all([
-          getContextJobsRuns(),
-          getContextJobs(),
-          getContextJobsRunQueueStatus(),
-        ]);
-
-        if (!mounted) return;
-        setRuns(runData);
-        setJobs(jobData);
-        setQueueStatus(queueData);
-      } catch (err) {
-        if (!mounted) return;
-        setError(err instanceof Error ? err.message : "Failed to load runs");
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
       }
-    };
+      const [runData, jobData, queueData] = await Promise.all([
+        getContextJobsRuns(),
+        getContextJobs(),
+        getContextJobsRunQueueStatus(),
+      ]);
 
+      setRuns(runData);
+      setJobs(jobData);
+      setQueueStatus(queueData);
+      hasLoadedOnceRef.current = true;
+      setError(null);
+      setPollWarning(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load runs";
+      if (quiet && hasLoadedOnceRef.current) {
+        setPollWarning("Live refresh delayed — retrying. In-progress runs may still be processing.");
+      } else {
+        setError(message);
+      }
+    } finally {
+      loadInFlightRef.current = false;
+      setIsLoading(false);
+    }
+  }, [entitlements.contextJobsEnabled, entitlements.status]);
+
+  useEffect(() => {
     void loadRuns();
+  }, [loadRuns]);
+
+  const hasLiveRuns = useMemo(
+    () => runs.some((run) => liveRunStates.has(run.state)),
+    [runs],
+  );
+
+  useEffect(() => {
+    if (!hasLiveRuns && !startedRunId) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void loadRuns({ quiet: true });
+    }, 2500);
 
     return () => {
-      mounted = false;
+      window.clearInterval(timer);
     };
-  }, [entitlements.contextJobsEnabled, entitlements.status]);
+  }, [hasLiveRuns, loadRuns, startedRunId]);
+
+  useEffect(() => {
+    if (!startedRunId) return;
+    const started = runs.find((run) => run.id === startedRunId);
+    if (started && !liveRunStates.has(started.state)) {
+      // Keep banner briefly after completion, then clear query noise.
+      const timer = window.setTimeout(() => {
+        setStartedRunId(null);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("started");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+      }, 4000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [runs, startedRunId]);
 
   useEffect(() => {
     if (!selectedRunJobId && jobs.length > 0) {
@@ -210,7 +268,11 @@ function ContextJobsRunsContent() {
       setIsStartingRun(true);
       setRunComposerError(null);
       const started: ContextJobRunStartResponse = await startContextJobRun(selectedRunJob.id, runRequest.trim());
-      router.push(`/context-jobs/runs/${started.id}`);
+      setStartedRunId(started.id);
+      setIsRunComposerOpen(false);
+      setRunRequest("");
+      router.replace(`/context-jobs/runs?started=${encodeURIComponent(started.id)}`);
+      await loadRuns({ quiet: true });
     } catch (err) {
       setRunComposerError(err instanceof Error ? err.message : "Failed to start run");
     } finally {
@@ -261,6 +323,21 @@ function ContextJobsRunsContent() {
             <p className="text-sm font-medium">{error}</p>
           </div>
         )}
+
+        {pollWarning && !error ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            <p className="text-sm font-medium">{pollWarning}</p>
+          </div>
+        ) : null}
+
+        {startedRunId ? (
+          <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
+            <p className="text-sm font-medium">
+              Run started. Status updates live on this page — open the run when you want the full detail.
+            </p>
+            <p className="mt-1 break-all text-xs text-blue-800">Run id: {startedRunId}</p>
+          </div>
+        ) : null}
 
         {entitlements.status === "succeeded" && !entitlements.contextJobsEnabled ? (
           <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
@@ -421,6 +498,7 @@ function ContextJobsRunsContent() {
                   const job = jobsById[run.jobId] ?? run.job;
                   const jobName = job?.name || `Job ${run.jobId.slice(0, 8)}`;
                   const isAnimated = ["planning", "retrieving", "executing", "validating"].includes(run.state);
+                  const isStartedFocus = startedRunId === run.id;
 
                   return (
                     <article
@@ -434,7 +512,11 @@ function ContextJobsRunsContent() {
                           router.push(`/context-jobs/runs/${run.id}`);
                         }
                       }}
-                      className="cursor-pointer rounded-[2rem] border border-white/70 bg-white/90 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md backdrop-blur focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      className={
+                        isStartedFocus
+                          ? "cursor-pointer rounded-[2rem] border border-blue-300 bg-blue-50/70 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md backdrop-blur focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          : "cursor-pointer rounded-[2rem] border border-white/70 bg-white/90 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md backdrop-blur focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      }
                     >
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="min-w-0 space-y-3">
