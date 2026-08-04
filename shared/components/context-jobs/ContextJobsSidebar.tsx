@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactElement } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type ReactElement } from "react";
+import { ChevronDown } from "@/shared/components/icons";
+import { LogOut } from "@/shared/components/icons/user-icons";
+import { APP_ROUTES } from "@/config/navigation";
+import { useAuth } from "@/shared/context/AuthContext";
+import { cn } from "@/shared/lib/cn";
 
 type SidebarItem = {
   label: string;
@@ -10,6 +15,10 @@ type SidebarItem = {
   description: string;
   icon: () => ReactElement;
   exact?: boolean;
+};
+
+type SectionItem = SidebarItem & {
+  section: "promptOptimizer" | "contextJobs";
 };
 
 function HomeIcon() {
@@ -112,6 +121,23 @@ const navigation: SidebarItem[] = [
   { label: "User Guide", href: "/context-jobs/user-guide", description: "How it works", icon: GuideIcon },
 ];
 
+const promptOptimizerLinks: SectionItem[] = [
+  {
+    label: "New Prompt Optimizer",
+    href: "/chat",
+    description: "Start a new optimizer session",
+    icon: JobsIcon,
+  },
+  {
+    label: "Library",
+    href: "/library",
+    description: "Saved prompts",
+    icon: GuideIcon,
+  },
+].map((item) => ({ ...item, section: "promptOptimizer" }));
+
+const contextJobLinks: SectionItem[] = navigation.map((item) => ({ ...item, section: "contextJobs" }));
+
 function isActivePath(pathname: string, href: string, exact?: boolean): boolean {
   if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -144,6 +170,47 @@ function SidebarButton({ item, isOpen }: { item: SidebarItem; isOpen: boolean })
   );
 }
 
+function SidebarSection({
+  title,
+  items,
+  isOpen,
+}: {
+  title: string;
+  items: SidebarItem[];
+  isOpen: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      {isOpen ? (
+        <div className="mb-2 px-2 pt-1">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</div>
+        </div>
+      ) : null}
+      {items.map((item) => (
+        <SidebarButton key={item.href} item={item} isOpen={isOpen} />
+      ))}
+    </div>
+  );
+}
+
+function planLabel(packageName?: string | null): string {
+  return packageName
+    ? `${packageName.charAt(0).toUpperCase()}${packageName.slice(1)} Plan`
+    : "No subscription Plan";
+}
+
+function userInitials(name?: string | null, email?: string | null): string {
+  if (name) {
+    return name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  }
+  return email?.[0]?.toUpperCase() || "U";
+}
+
 export default function ContextJobsSidebar({
   isOpen,
   toggleSidebar,
@@ -151,6 +218,77 @@ export default function ContextJobsSidebar({
   isOpen: boolean;
   toggleSidebar: () => void;
 }) {
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/login");
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const profileDropdown = (
+    <div className="absolute bottom-full left-0 mb-2 w-full min-w-56 rounded-md border border-gray-700 bg-gray-800 shadow-lg z-50 overflow-hidden">
+      <div className="border-b border-gray-700 px-4 py-4">
+        <p className="mb-1 truncate text-sm font-medium text-white">
+          {user?.name || user?.email || "User"}
+        </p>
+        <p className="mb-2 truncate text-xs text-gray-400">{user?.email}</p>
+        <p className="text-xs capitalize text-gray-400">{planLabel(user?.package_name)}</p>
+      </div>
+      <div className="py-1">
+        <Link
+          href={APP_ROUTES.home}
+          onClick={() => setIsDropdownOpen(false)}
+          className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-gray-700"
+        >
+          <span>Home</span>
+        </Link>
+        <Link
+          href={APP_ROUTES.pricing}
+          onClick={() => setIsDropdownOpen(false)}
+          className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-gray-700"
+        >
+          <span>Pricing</span>
+        </Link>
+        <Link
+          href="/profile"
+          onClick={() => setIsDropdownOpen(false)}
+          className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-gray-700"
+        >
+          <span>Profile</span>
+        </Link>
+        {user?.role === "admin" && (
+          <Link
+            href="/admin"
+            onClick={() => setIsDropdownOpen(false)}
+            className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-gray-700"
+          >
+            <span>Admin Panel</span>
+          </Link>
+        )}
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-gray-700"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Sign out</span>
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <aside
@@ -200,26 +338,49 @@ export default function ContextJobsSidebar({
           </Link>
         </div>
 
-        {isOpen ? (
-          <div className="flex-1 overflow-y-auto px-2 pb-4">
-            <div className="mb-2 px-2">
-              <button className="flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-gray-300">
-                <span>Navigation</span>
-              </button>
-            </div>
+        <div className="flex-1 overflow-y-auto px-2 pb-4">
+          <SidebarSection title="Prompt Optimizer" items={promptOptimizerLinks} isOpen={isOpen} />
+          <div className="my-3 border-t border-gray-800" />
+          <SidebarSection title="Context Jobs" items={contextJobLinks} isOpen={isOpen} />
+        </div>
 
-            <div className="space-y-1">
-              {navigation.map((item) => (
-                <SidebarButton key={item.href} item={item} isOpen={isOpen} />
-              ))}
+        {isOpen ? (
+          <div className="border-t border-gray-800 p-4">
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="flex w-full items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-800"
+              >
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-700">
+                  <span className="text-xs">{userInitials(user?.name, user?.email)}</span>
+                </div>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="truncate text-sm font-medium">
+                    {user?.name || user?.email || "User"}
+                  </p>
+                  <p className="text-xs capitalize text-gray-400">{planLabel(user?.package_name)}</p>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 text-gray-400 transition-transform",
+                    isDropdownOpen && "rotate-180"
+                  )}
+                />
+              </button>
+              {isDropdownOpen ? profileDropdown : null}
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto px-2 pb-4">
-            <div className="space-y-1">
-              {navigation.map((item) => (
-                <SidebarButton key={item.href} item={item} isOpen={isOpen} />
-              ))}
+          <div className="flex flex-col items-center justify-end pb-4">
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-700 transition-colors hover:bg-gray-600"
+                title={user?.name || user?.email || "User Profile"}
+              >
+                <span className="text-xs">{userInitials(user?.name, user?.email)}</span>
+              </button>
+              {isDropdownOpen ? profileDropdown : null}
             </div>
           </div>
         )}
