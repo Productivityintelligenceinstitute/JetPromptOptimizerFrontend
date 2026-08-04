@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import ContextJobsSidebar from "@/shared/components/context-jobs/ContextJobsSidebar";
+import AppointmentWidget from "@/shared/components/Homepage/AppointmentWidget";
 import { TrialUsageBar } from "@/shared/components/context-jobs/TrialUsageBar";
 import { cn } from "@/shared/lib/cn";
 
@@ -21,8 +22,7 @@ export default function ContextJobsLayout({ children }: { children: ReactNode })
         )}
       >
         <div className="sticky top-[88px] z-20 border-b border-gray-100 bg-white px-4 py-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="font-medium text-sm text-gray-600 md:text-base">Context Jobs</div>
+          <div className="flex items-center justify-end gap-3">
             <div className="hidden min-w-0 md:block">
               <TrialUsageBar />
             </div>
@@ -35,6 +35,7 @@ export default function ContextJobsLayout({ children }: { children: ReactNode })
 
         <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
       </main>
+      <AppointmentWidget />
     </div>
   );
 }
