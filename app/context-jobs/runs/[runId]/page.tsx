@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AuthGuard from "@/shared/components/auth/AuthGuard";
 import {
+  attachContractToRun,
   confirmContextJobMemoryChanges,
   downloadContextJobRunArtifact,
   getContextJob,
@@ -12,7 +13,9 @@ import {
   getContextJobRunArtifacts,
   getContextJobRunChain,
   getContextJobRunPendingApprovals,
+  recordContextJobRunDecision,
   replayContextJobRun,
+  retryAmendment,
   submitContextJobToolApproval,
   type ContextJob,
   type ContextJobRun,
@@ -131,6 +134,29 @@ function formatBytes(value: number | null | undefined): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isLiveRunState(state: string | null | undefined): boolean {
+  return Boolean(state && !terminalStates.has(state));
+}
+
+function decisionLabel(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "approve" || raw === "approved" || raw === "accept" || raw === "accepted") {
+    return "Approved";
+  }
+  if (raw === "escalate" || raw === "escalated") {
+    return "Escalated";
+  }
+  if (raw === "reject" || raw === "rejected") {
+    return "Rejected";
+  }
+  return raw ? raw.replace(/_/g, " ") : "Recorded";
+}
+
+function isApprovedDecision(value: unknown): boolean {
+  const raw = String(value || "").trim().toLowerCase();
+  return raw === "approve" || raw === "approved" || raw === "accept" || raw === "accepted";
 }
 
 function formatEventLabel(event: unknown, index: number): string {
@@ -429,6 +455,11 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
   const [chainError, setChainError] = useState<string | null>(null);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
   const [downloadBusyPath, setDownloadBusyPath] = useState<string | null>(null);
+  const [decisionBusy, setDecisionBusy] = useState<"approve" | "escalate" | null>(null);
+  const [decisionNotes, setDecisionNotes] = useState("");
+  const [attachText, setAttachText] = useState("");
+  const [attachBusy, setAttachBusy] = useState(false);
+  const [retryBusy, setRetryBusy] = useState(false);
   const mountedRef = useRef(true);
   const timerRef = useRef<number | null>(null);
   const loadInFlightRef = useRef(false);
@@ -474,7 +505,11 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
         setPendingApprovals([]);
       }
 
-      if (terminalStates.has(runData.state) && timerRef.current) {
+      if (
+        terminalStates.has(runData.state) &&
+        !isLiveRunState(runData.amendmentState) &&
+        timerRef.current
+      ) {
         window.clearInterval(timerRef.current);
         timerRef.current = null;
       }
@@ -558,7 +593,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [runId, run?.state, run?.endedAt]);
+  }, [runId, run?.state, run?.endedAt, run?.amendmentState, run?.amendmentRunId]);
 
   const handleArtifactDownload = async (artifact: ContextJobsRunArtifact) => {
     setDownloadBusyPath(artifact.path);
@@ -585,7 +620,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
   const hasChainLinks = Boolean(
     chain && (chain.parentRun || (chain.childRuns && chain.childRuns.length > 0)),
   );
-  const isLive = run ? !terminalStates.has(run.state) : false;
+  const isLive = run ? isLiveRunState(run.state) || isLiveRunState(run.amendmentState) : false;
   const jobLabel = job?.name || run?.job?.name || (run?.jobId ? `Job ${run.jobId.slice(0, 8)}` : "Context Job");
   const resultContent = getResultContent(run?.runOutputPackage, run);
   const resultPreview = getResultPreviewText(resultContent);
@@ -596,6 +631,30 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
     Boolean(run?.outputText?.trim()) ||
     Boolean(validationSummary) ||
     terminalStates.has(run?.state || "");
+  const isContractReview = (job?.workflowType || "").toLowerCase() === "contract_review";
+  const humanDecision = run?.humanDecision ?? null;
+  const canApproveRecommendations =
+    isContractReview &&
+    Boolean(run) &&
+    terminalStates.has(run?.state || "") &&
+    run?.state !== "failed" &&
+    run?.state !== "blocked_by_policy" &&
+    !humanDecision;
+  const amendmentState = run?.amendmentState || null;
+  const amendmentGenerating = Boolean(
+    humanDecision &&
+      isApprovedDecision(humanDecision.decision) &&
+      isLiveRunState(amendmentState),
+  );
+  const amendmentFailed = Boolean(
+    amendmentState && ["failed", "escalated", "blocked_by_policy"].includes(amendmentState),
+  );
+  const revisedArtifacts = artifacts.filter((artifact) => {
+    const purpose = (artifact.purpose || "").toLowerCase();
+    const path = (artifact.path || "").toLowerCase();
+    return purpose === "revised_contract" || path.includes("revised-contract");
+  });
+  const revisedContractReady = revisedArtifacts.length > 0 && !amendmentGenerating;
 
   const handleToolApproval = async (approvalId: string, decision: "approved" | "denied"): Promise<void> => {
     try {
@@ -654,6 +713,102 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
       }
     }
   };
+
+  const handleRunDecision = async (decision: "approve" | "escalate"): Promise<void> => {
+    try {
+      setDecisionBusy(decision);
+      setError(null);
+      const updatedRun = await recordContextJobRunDecision(runId, {
+        decision,
+        notes: decisionNotes.trim() || undefined,
+      });
+      if (!mountedRef.current) return;
+      setRun(updatedRun);
+      if (!timerRef.current) {
+        timerRef.current = window.setInterval(() => {
+          void loadRun();
+        }, 2500);
+      }
+      await loadRun();
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError(err instanceof Error ? err.message : "Failed to record decision");
+    } finally {
+      if (mountedRef.current) {
+        setDecisionBusy(null);
+      }
+    }
+  };
+
+  const handleAttachAndRetry = async (): Promise<void> => {
+    if (!attachText.trim()) return;
+    try {
+      setAttachBusy(true);
+      setError(null);
+      await attachContractToRun(runId, { contractText: attachText.trim() });
+      if (!mountedRef.current) return;
+      await retryAmendment(runId);
+      if (!mountedRef.current) return;
+      setAttachText("");
+      if (!timerRef.current) {
+        timerRef.current = window.setInterval(() => {
+          void loadRun();
+        }, 2500);
+      }
+      await loadRun();
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError(err instanceof Error ? err.message : "Failed to attach contract and retry");
+    } finally {
+      if (mountedRef.current) {
+        setAttachBusy(false);
+      }
+    }
+  };
+
+  const handleRetryAmendment = async (): Promise<void> => {
+    try {
+      setRetryBusy(true);
+      setError(null);
+      await retryAmendment(runId);
+      if (!mountedRef.current) return;
+      if (!timerRef.current) {
+        timerRef.current = window.setInterval(() => {
+          void loadRun();
+        }, 2500);
+      }
+      await loadRun();
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError(err instanceof Error ? err.message : "Failed to retry amendment");
+    } finally {
+      if (mountedRef.current) {
+        setRetryBusy(false);
+      }
+    }
+  };
+
+  const handleContractFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext === "txt") {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          setAttachText(reader.result);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const amendmentValidation = run?.amendmentValidation ?? null;
+  const amendmentSourceStatus = run?.amendmentSourceStatus ?? null;
+  const validationFailed = Boolean(
+    amendmentValidation && !amendmentValidation.passed,
+  );
+  const sourceNotFound = amendmentSourceStatus === "not_found";
 
   if (entitlements.status === "succeeded" && !entitlements.contextJobsEnabled) {
     return (
@@ -832,6 +987,205 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                     <StructuredRunResult content={resultContent} renderedHtml={renderedResultContent} />
                   )}
                 </div>
+
+                {isContractReview ? (
+                  <div className="mt-6 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-800">
+                      Revised contract
+                    </p>
+                    {canApproveRecommendations ? (
+                      <div className="mt-3 space-y-3">
+                        <p className="text-sm leading-6 text-slate-700">
+                          Approve these recommendations to generate a clean revised Word document. The file stays on this run for download. It is not written back to Coupa or Ironclad.
+                        </p>
+                        <textarea
+                          value={decisionNotes}
+                          onChange={(event) => setDecisionNotes(event.target.value)}
+                          rows={3}
+                          placeholder="Optional notes for the revision (for example, keep limitation of liability unchanged)"
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none ring-teal-600/20 placeholder:text-slate-400 focus:ring-4"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={decisionBusy !== null}
+                            onClick={() => void handleRunDecision("approve")}
+                            className="rounded-full bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {decisionBusy === "approve" ? "Starting…" : "Approve recommendations"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={decisionBusy !== null}
+                            onClick={() => void handleRunDecision("escalate")}
+                            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {decisionBusy === "escalate" ? "Saving…" : "Escalate"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {humanDecision ? (
+                      <div className="mt-3 rounded-2xl border border-white bg-white px-4 py-3">
+                        <p className="text-sm font-semibold text-slate-900">
+                          Decision: {decisionLabel(humanDecision.decision)}
+                        </p>
+                        {typeof humanDecision.notes === "string" && humanDecision.notes.trim() ? (
+                          <p className="mt-1 text-sm leading-6 text-slate-600">{humanDecision.notes}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {sourceNotFound && !revisedContractReady ? (
+                      <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50/70 p-4">
+                        <p className="text-sm font-semibold text-rose-900">
+                          Could not load the original contract
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-rose-800">
+                          Upload or paste the contract text to generate the revised document.
+                        </p>
+                        <textarea
+                          value={attachText}
+                          onChange={(event) => setAttachText(event.target.value)}
+                          rows={6}
+                          placeholder="Paste the full contract text here…"
+                          className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none ring-teal-600/20 placeholder:text-slate-400 focus:ring-4"
+                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-3">
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50">
+                            Upload .txt file
+                            <input
+                              type="file"
+                              accept=".txt"
+                              className="hidden"
+                              onChange={handleContractFileSelect}
+                            />
+                          </label>
+                          <span className="text-xs text-slate-500">
+                            For Word/PDF files, paste the text content instead.
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            disabled={attachBusy || !attachText.trim()}
+                            onClick={() => void handleAttachAndRetry()}
+                            className="rounded-full bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {attachBusy ? "Submitting…" : "Submit & generate revised contract"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {validationFailed && !revisedContractReady && !sourceNotFound ? (
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm font-semibold text-amber-900">
+                          The revised contract did not pass quality validation
+                        </p>
+                        {amendmentValidation && amendmentValidation.errors.length > 0 ? (
+                          <ul className="mt-2 space-y-1">
+                            {amendmentValidation.errors.map((err, idx) => (
+                              <li key={idx} className="flex items-start gap-2 text-sm leading-6 text-amber-900">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                                {err}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {amendmentValidation && amendmentValidation.warnings.length > 0 ? (
+                          <ul className="mt-2 space-y-1">
+                            {amendmentValidation.warnings.map((warn, idx) => (
+                              <li key={idx} className="flex items-start gap-2 text-sm leading-6 text-amber-800/80">
+                                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                                {warn}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={retryBusy}
+                            onClick={() => void handleRetryAmendment()}
+                            className="rounded-full bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {retryBusy ? "Retrying…" : "Retry revised contract"}
+                          </button>
+                        </div>
+                        <details className="mt-3">
+                          <summary className="cursor-pointer text-xs font-semibold text-amber-800">
+                            Or provide the contract text manually
+                          </summary>
+                          <div className="mt-2 space-y-2">
+                            <textarea
+                              value={attachText}
+                              onChange={(event) => setAttachText(event.target.value)}
+                              rows={4}
+                              placeholder="Paste the full contract text here…"
+                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none ring-teal-600/20 placeholder:text-slate-400 focus:ring-4"
+                            />
+                            <div className="flex flex-wrap items-center gap-3">
+                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50">
+                                Upload .txt file
+                                <input
+                                  type="file"
+                                  accept=".txt"
+                                  className="hidden"
+                                  onChange={handleContractFileSelect}
+                                />
+                              </label>
+                              <span className="text-xs text-slate-500">
+                                For Word/PDF files, paste the text content instead.
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={attachBusy || !attachText.trim()}
+                              onClick={() => void handleAttachAndRetry()}
+                              className="rounded-full bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {attachBusy ? "Submitting…" : "Submit & generate revised contract"}
+                            </button>
+                          </div>
+                        </details>
+                      </div>
+                    ) : null}
+
+                    {amendmentGenerating && !sourceNotFound && !validationFailed ? (
+                      <div className="mt-3 flex items-center gap-3 rounded-2xl border border-teal-200 bg-white px-4 py-3">
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-teal-700 border-r-transparent" />
+                        <p className="text-sm font-semibold text-slate-900">Generating revised contract…</p>
+                      </div>
+                    ) : null}
+
+                    {amendmentFailed && !sourceNotFound && !validationFailed ? (
+                      <p className="mt-3 text-sm font-medium text-rose-700">
+                        Revised contract generation failed. Retry from a new Contract Review run after checking the job.
+                      </p>
+                    ) : null}
+
+                    {revisedContractReady && (!amendmentValidation || amendmentValidation.passed) ? (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-sm font-semibold text-slate-900">Revised contract ready</p>
+                        {revisedArtifacts.map((artifact) => (
+                          <button
+                            key={artifact.path}
+                            type="button"
+                            disabled={downloadBusyPath === artifact.path}
+                            onClick={() => void handleArtifactDownload(artifact)}
+                            className="inline-flex w-full items-center justify-center rounded-full bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                          >
+                            {downloadBusyPath === artifact.path
+                              ? "Downloading..."
+                              : `Download ${artifact.filename || artifact.path.split("/").pop() || "revised contract"}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {validationSummary ? (
                   <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
@@ -1048,12 +1402,23 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                     <p className="mt-3 text-sm text-slate-500">No downloadable artifacts for this run.</p>
                   ) : (
                     <div className="mt-4 space-y-2">
-                      {artifacts.map((artifact) => (
+                      {artifacts.map((artifact) => {
+                        const isRevised =
+                          (artifact.purpose || "").toLowerCase() === "revised_contract" ||
+                          (artifact.path || "").toLowerCase().includes("revised-contract");
+                        return (
                         <div
                           key={artifact.path}
-                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                          className={`rounded-2xl border px-4 py-3 ${
+                            isRevised
+                              ? "border-teal-200 bg-teal-50"
+                              : "border-slate-200 bg-slate-50"
+                          }`}
                         >
-                          <p className="truncate text-sm font-semibold text-slate-900">{artifact.path}</p>
+                          <p className="truncate text-sm font-semibold text-slate-900">
+                            {isRevised ? "Revised contract · " : ""}
+                            {artifact.filename || artifact.path}
+                          </p>
                           <p className="mt-1 text-xs text-slate-500">
                             {formatBytes(artifact.sizeBytes)}
                             {artifact.mimeType ? ` · ${artifact.mimeType}` : ""}
@@ -1068,7 +1433,8 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                             {downloadBusyPath === artifact.path ? "Downloading..." : "Download"}
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -37,6 +37,10 @@ const sections = [
     body: "Pro plans use your own LLM keys. Tool keys unlock external providers. Vector connections point retrieval at Pinecone, Qdrant, Weaviate, or pgvector. Test connections before ingesting large corpora.",
   },
   {
+    title: "CLM import (Coupa / Ironclad)",
+    body: "Save Coupa OAuth or Ironclad API credentials under CLM. On a job page, paste a Coupa /contracts/show/{id} or Ironclad /workflow/{id} or /record/{id} URL. Jet downloads the legal agreement, extracts text, and ingests it into that job's knowledge target — same as upload, without leaving the CLM.",
+  },
+  {
     title: "Trial limits",
     body: "Trial usage for jobs and runs appears in the Context Jobs header. When you hit a limit, upgrade or archive unused jobs. Replay and repair still count toward run usage where entitlements enforce it.",
   },
@@ -49,6 +53,7 @@ const quickLinks = [
   { href: "/context-jobs/procurement/alerts", label: "Alerts" },
   { href: "/context-jobs/keys", label: "Keys" },
   { href: "/context-jobs/vector-connections", label: "Vector DB" },
+  { href: "/context-jobs/clm-connections", label: "CLM" },
   { href: "/context-jobs/runs", label: "Runs" },
 ];
 
