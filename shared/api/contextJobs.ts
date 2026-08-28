@@ -84,6 +84,57 @@ export interface ContextJobsVectorConnectionTestResponse {
   message?: string | null;
 }
 
+export interface ContextJobsClmConnection {
+  id: string;
+  owner?: string | null;
+  name?: string | null;
+  provider?: string | null;
+  status?: string | null;
+  lastTestedAt?: string | null;
+  lastError?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ContextJobsClmConnectionCreateRequest {
+  name: string;
+  provider: "coupa" | "ironclad" | string;
+  config: Record<string, unknown>;
+  status?: string;
+}
+
+export interface ContextJobsClmConnectionUpdateRequest {
+  name?: string;
+  config?: Record<string, unknown>;
+  status?: string;
+}
+
+export interface ContextJobsClmConnectionTestResponse {
+  ok?: boolean;
+  provider?: string | null;
+  message?: string | null;
+}
+
+export interface ContextJobsClmImportRequest {
+  connectionId: string;
+  url?: string;
+  resourceId?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface ContextJobsClmImportResult {
+  provider?: string;
+  resourceType?: string;
+  resourceId?: string;
+  filename?: string;
+  jobId?: string;
+  ingestionStatus?: string;
+  upsertedCount?: number;
+  warnings?: string[];
+  message?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ContextJobsTool {
   id: string;
   name: string;
@@ -167,9 +218,11 @@ export interface ContextJobsProcurementAlert {
 
 export interface ContextJobsRunArtifact {
   path: string;
+  filename?: string | null;
   sizeBytes?: number | null;
   mimeType?: string | null;
   toolId?: string | null;
+  purpose?: string | null;
 }
 
 export interface ContextJobsRunArtifacts {
@@ -340,6 +393,14 @@ export interface ContextJobRun {
   pendingMemoryChanges: Record<string, unknown> | null;
   repairCycles: number | null;
   parentRunId: string | null;
+  amendmentRunId?: string | null;
+  amendmentState?: string | null;
+  amendmentValidation?: {
+    passed: boolean;
+    errors: string[];
+    warnings: string[];
+  } | null;
+  amendmentSourceStatus?: "found" | "not_found" | null;
   workspaceId: string | null;
   job?: ContextJob | null;
 }
@@ -1005,6 +1066,9 @@ function normalizeRunArtifact(artifact: unknown): ContextJobsRunArtifact {
   const record = artifact as Record<string, unknown>;
   return {
     path: typeof record.path === "string" ? record.path : "",
+    filename:
+      (typeof record.filename === "string" && record.filename) ||
+      null,
     sizeBytes:
       (typeof record.sizeBytes === "number" && record.sizeBytes) ||
       (typeof record.size_bytes === "number" && record.size_bytes) ||
@@ -1016,6 +1080,9 @@ function normalizeRunArtifact(artifact: unknown): ContextJobsRunArtifact {
     toolId:
       (typeof record.toolId === "string" && record.toolId) ||
       (typeof record.tool_id === "string" && record.tool_id) ||
+      null,
+    purpose:
+      (typeof record.purpose === "string" && record.purpose) ||
       null,
   };
 }
@@ -1143,6 +1210,153 @@ export const deleteContextJobsVectorConnection = async (connectionId: string): P
   }
 };
 
+function normalizeClmConnection(connection: unknown): ContextJobsClmConnection {
+  if (!connection || typeof connection !== "object" || Array.isArray(connection)) {
+    return connection as ContextJobsClmConnection;
+  }
+
+  const record = connection as Record<string, unknown>;
+  return {
+    id: String(record.id ?? ""),
+    owner: typeof record.owner === "string" ? record.owner : null,
+    name: typeof record.name === "string" ? record.name : null,
+    provider: typeof record.provider === "string" ? record.provider : null,
+    status: typeof record.status === "string" ? record.status : null,
+    lastTestedAt:
+      (typeof record.lastTestedAt === "string" && record.lastTestedAt) ||
+      (typeof record.last_tested_at === "string" && record.last_tested_at) ||
+      null,
+    lastError:
+      (typeof record.lastError === "string" && record.lastError) ||
+      (typeof record.last_error === "string" && record.last_error) ||
+      null,
+    createdAt:
+      (typeof record.createdAt === "string" && record.createdAt) ||
+      (typeof record.created_at === "string" && record.created_at) ||
+      null,
+    updatedAt:
+      (typeof record.updatedAt === "string" && record.updatedAt) ||
+      (typeof record.updated_at === "string" && record.updated_at) ||
+      null,
+  };
+}
+
+export const getContextJobsClmConnections = async (): Promise<ContextJobsClmConnection[]> => {
+  try {
+    const response = await apiClient.get<unknown>("/context-jobs/clm-connections");
+    return normalizeListResponse<ContextJobsClmConnection>(response.data).map(normalizeClmConnection);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "getContextJobsClmConnections");
+    throw normalizedError;
+  }
+};
+
+export const createContextJobsClmConnection = async (
+  payload: ContextJobsClmConnectionCreateRequest,
+): Promise<ContextJobsClmConnection> => {
+  try {
+    const response = await apiClient.post<ContextJobsClmConnection>("/context-jobs/clm-connections", payload);
+    return normalizeClmConnection(response.data);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "createContextJobsClmConnection");
+    throw normalizedError;
+  }
+};
+
+export const updateContextJobsClmConnection = async (
+  connectionId: string,
+  payload: ContextJobsClmConnectionUpdateRequest,
+): Promise<ContextJobsClmConnection> => {
+  try {
+    const response = await apiClient.patch<ContextJobsClmConnection>(
+      `/context-jobs/clm-connections/${connectionId}`,
+      payload,
+    );
+    return normalizeClmConnection(response.data);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "updateContextJobsClmConnection");
+    throw normalizedError;
+  }
+};
+
+export const testContextJobsClmConnection = async (
+  connectionId: string,
+): Promise<ContextJobsClmConnectionTestResponse> => {
+  try {
+    const response = await apiClient.post<ContextJobsClmConnectionTestResponse>(
+      `/context-jobs/clm-connections/${connectionId}/test`,
+    );
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "testContextJobsClmConnection");
+    throw normalizedError;
+  }
+};
+
+export const deleteContextJobsClmConnection = async (connectionId: string): Promise<void> => {
+  try {
+    await apiClient.delete(`/context-jobs/clm-connections/${connectionId}`);
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "deleteContextJobsClmConnection");
+    throw normalizedError;
+  }
+};
+
+export const ingestContextJobFromClm = async (
+  jobId: string,
+  payload: ContextJobsClmImportRequest,
+): Promise<ContextJobsClmImportResult> => {
+  try {
+    const response = await apiClient.post<Record<string, unknown>>(
+      `/context-jobs/jobs/${jobId}/ingest/clm`,
+      payload,
+      { timeout: 180000 },
+    );
+    const data = response.data || {};
+    return {
+      provider: typeof data.provider === "string" ? data.provider : undefined,
+      resourceType:
+        (typeof data.resourceType === "string" && data.resourceType) ||
+        (typeof data.resource_type === "string" && data.resource_type) ||
+        undefined,
+      resourceId:
+        (typeof data.resourceId === "string" && data.resourceId) ||
+        (typeof data.resource_id === "string" && data.resource_id) ||
+        undefined,
+      filename: typeof data.filename === "string" ? data.filename : undefined,
+      jobId:
+        (typeof data.jobId === "string" && data.jobId) ||
+        (typeof data.job_id === "string" && data.job_id) ||
+        undefined,
+      ingestionStatus:
+        (typeof data.ingestionStatus === "string" && data.ingestionStatus) ||
+        (typeof data.ingestion_status === "string" && data.ingestion_status) ||
+        undefined,
+      upsertedCount:
+        typeof data.upsertedCount === "number"
+          ? data.upsertedCount
+          : typeof data.upserted_count === "number"
+            ? data.upserted_count
+            : undefined,
+      warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
+      message: typeof data.message === "string" ? data.message : undefined,
+      metadata:
+        data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+          ? (data.metadata as Record<string, unknown>)
+          : undefined,
+    };
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "ingestContextJobFromClm");
+    throw normalizedError;
+  }
+};
+
 export const createContextJobsToolKey = async (payload: ContextJobsToolKeyCreateRequest): Promise<ContextJobsToolKey> => {
   try {
     const response = await apiClient.post<ContextJobsToolKey>("/context-jobs/tool-keys", payload);
@@ -1234,8 +1448,36 @@ export const getContextJobsRunQueueStatus = async (): Promise<ContextJobsRunQueu
 
 export const getContextJobRun = async (runId: string): Promise<ContextJobRun> => {
   try {
-    const response = await apiClient.get<ContextJobRun>(`/context-jobs/runs/${runId}`);
-    return response.data;
+    const response = await apiClient.get<ContextJobRun & Record<string, unknown>>(
+      `/context-jobs/runs/${runId}`,
+    );
+    const data = response.data;
+    const record = data as unknown as Record<string, unknown>;
+    const rawValidation =
+      data.amendmentValidation ??
+      (record.amendment_validation as ContextJobRun["amendmentValidation"] | undefined) ??
+      null;
+    const rawSourceStatus =
+      data.amendmentSourceStatus ??
+      (record.amendment_source_status as ContextJobRun["amendmentSourceStatus"] | undefined) ??
+      null;
+
+    return {
+      ...data,
+      amendmentRunId:
+        data.amendmentRunId ||
+        (typeof record.amendment_run_id === "string" ? record.amendment_run_id : null),
+      amendmentState:
+        data.amendmentState ||
+        (typeof record.amendment_state === "string" ? record.amendment_state : null),
+      amendmentValidation: rawValidation,
+      amendmentSourceStatus: rawSourceStatus,
+      humanDecision:
+        data.humanDecision ||
+        (record.human_decision && typeof record.human_decision === "object"
+          ? (record.human_decision as Record<string, unknown>)
+          : data.humanDecision),
+    };
   } catch (error) {
     const normalizedError = normalizeError(error);
     logError(normalizedError, "getContextJobRun");
@@ -1429,6 +1671,52 @@ export const replayContextJobRun = async (runId: string): Promise<ContextJobRun>
   } catch (error) {
     const normalizedError = normalizeError(error);
     logError(normalizedError, "replayContextJobRun");
+    throw normalizedError;
+  }
+};
+
+export const recordContextJobRunDecision = async (
+  runId: string,
+  payload: { decision: string; notes?: string },
+): Promise<ContextJobRun> => {
+  try {
+    const response = await apiClient.patch<ContextJobRun>(`/context-jobs/runs/${runId}/decision`, payload);
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "recordContextJobRunDecision");
+    throw normalizedError;
+  }
+};
+
+export const attachContractToRun = async (
+  runId: string,
+  payload: { contractText: string },
+): Promise<ContextJobRun> => {
+  try {
+    const response = await apiClient.post<ContextJobRun>(
+      `/context-jobs/runs/${runId}/attach-contract`,
+      payload,
+    );
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "attachContractToRun");
+    throw normalizedError;
+  }
+};
+
+export const retryAmendment = async (
+  runId: string,
+): Promise<ContextJobRun> => {
+  try {
+    const response = await apiClient.post<ContextJobRun>(
+      `/context-jobs/runs/${runId}/retry-amendment`,
+    );
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "retryAmendment");
     throw normalizedError;
   }
 };

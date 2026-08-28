@@ -9,7 +9,9 @@ import {
   getContextJobStats,
   getContextJobPublishHistory,
   getContextJobVersions,
+  getContextJobsClmConnections,
   ingestContextJob,
+  ingestContextJobFromClm,
   ingestContextJobUpload,
   rollbackContextJob,
   startContextJobRun,
@@ -20,6 +22,8 @@ import {
   type ContextJobStats,
   type ContextJobPublishHistoryItem,
   type ContextJobVersion,
+  type ContextJobsClmConnection,
+  type ContextJobsClmImportResult,
 } from "@/shared/api/contextJobs";
 import { useAuth } from "@/shared/context/AuthContext";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
@@ -582,6 +586,12 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestError, setIngestError] = useState<string | null>(null);
   const [ingestResult, setIngestResult] = useState<ContextJobIngestionResponse | ContextJobIngestionUploadResponse | null>(null);
+  const [clmConnections, setClmConnections] = useState<ContextJobsClmConnection[]>([]);
+  const [clmConnectionId, setClmConnectionId] = useState("");
+  const [clmUrl, setClmUrl] = useState("");
+  const [isImportingClm, setIsImportingClm] = useState(false);
+  const [clmImportError, setClmImportError] = useState<string | null>(null);
+  const [clmImportResult, setClmImportResult] = useState<ContextJobsClmImportResult | null>(null);
   const [rollbackBusyVersion, setRollbackBusyVersion] = useState<number | null>(null);
   const [expandedVersionIds, setExpandedVersionIds] = useState<Record<string, boolean>>({});
   const [isRemovingPolicyPlaceholder, setIsRemovingPolicyPlaceholder] = useState(false);
@@ -672,6 +682,30 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadClmConnections = async (): Promise<void> => {
+      try {
+        const connections = await getContextJobsClmConnections();
+        if (cancelled) return;
+        const active = connections.filter((item) => (item.status || "active") === "active");
+        setClmConnections(active);
+        setClmConnectionId((current) => {
+          if (current && active.some((item) => item.id === current)) return current;
+          return active[0]?.id || "";
+        });
+      } catch {
+        if (cancelled) return;
+        setClmConnections([]);
+        setClmConnectionId("");
+      }
+    };
+    void loadClmConnections();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleVersionExpanded = (versionId: string) => {
     setExpandedVersionIds((current) => ({ ...current, [versionId]: !current[versionId] }));
@@ -822,6 +856,41 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
     setIngestResult(null);
     setIngestFiles(files);
     setIngestFileName(files.length ? `${files.length} file${files.length === 1 ? "" : "s"} selected` : null);
+  };
+
+  const handleClmImport = async (): Promise<void> => {
+    if (!job) return;
+    if (!clmConnectionId) {
+      setClmImportError("Select a Coupa or Ironclad connection first (or add one under CLM).");
+      return;
+    }
+    if (!clmUrl.trim()) {
+      setClmImportError("Paste a Coupa or Ironclad contract URL (or resource ID).");
+      return;
+    }
+
+    try {
+      setIsImportingClm(true);
+      setClmImportError(null);
+      setClmImportResult(null);
+      const metadata = Object.fromEntries(
+        ingestMetadataPairs
+          .filter((pair) => pair.key.trim() && pair.value.trim())
+          .map((pair) => [pair.key.trim(), pair.value.trim()]),
+      );
+      const response = await ingestContextJobFromClm(job.id, {
+        connectionId: clmConnectionId,
+        url: clmUrl.trim(),
+        ...(Object.keys(metadata).length ? { metadata } : {}),
+      });
+      setClmImportResult(response);
+      setClmUrl("");
+      await loadJob();
+    } catch (err) {
+      setClmImportError(err instanceof Error ? err.message : "Failed to import from CLM");
+    } finally {
+      setIsImportingClm(false);
+    }
   };
 
   const handleRemovePolicyPlaceholder = async (): Promise<void> => {
@@ -1157,6 +1226,106 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
                         {pair.key}={pair.value} ×
                       </button>
                     ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">Import from CLM</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Paste a Coupa <code className="rounded bg-slate-100 px-1">/contracts/show/{"{id}"}</code> or Ironclad{" "}
+                      <code className="rounded bg-slate-100 px-1">/workflow/{"{id}"}</code> /{" "}
+                      <code className="rounded bg-slate-100 px-1">/record/{"{id}"}</code> URL. Jet downloads the legal
+                      agreement via your saved connection and ingests it here. Optional metadata above is applied too.
+                    </p>
+                  </div>
+                  <Link
+                    href="/context-jobs/clm-connections"
+                    className="shrink-0 text-sm font-semibold text-teal-700 hover:text-teal-900"
+                  >
+                    Manage CLM
+                  </Link>
+                </div>
+
+                {clmConnections.length ? (
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[0.9fr_1.4fr_auto]">
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-medium text-slate-600">Connection</span>
+                      <select
+                        value={clmConnectionId}
+                        onChange={(event) => {
+                          setClmConnectionId(event.target.value);
+                          setClmImportError(null);
+                          setClmImportResult(null);
+                        }}
+                        disabled={isImportingClm}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {clmConnections.map((connection) => (
+                          <option key={connection.id} value={connection.id}>
+                            {(connection.name || "Unnamed") + ` (${connection.provider || "clm"})`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-medium text-slate-600">Contract URL or ID</span>
+                      <input
+                        value={clmUrl}
+                        onChange={(event) => {
+                          setClmUrl(event.target.value);
+                          setClmImportError(null);
+                          setClmImportResult(null);
+                        }}
+                        placeholder="https://acme.coupa.com/contracts/show/12345"
+                        disabled={isImportingClm}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                    </label>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleClmImport()}
+                        disabled={isImportingClm || isIngesting || !clmConnectionId || !clmUrl.trim()}
+                        className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 lg:w-auto"
+                      >
+                        {isImportingClm ? "Importing..." : "Import & ingest"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    No active CLM connections.{" "}
+                    <Link href="/context-jobs/clm-connections" className="font-semibold text-teal-700 hover:text-teal-900">
+                      Add Coupa or Ironclad
+                    </Link>{" "}
+                    to import contracts by URL.
+                  </div>
+                )}
+
+                {clmImportError ? (
+                  <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-rose-800">
+                    <p className="text-sm font-medium">{clmImportError}</p>
+                  </div>
+                ) : null}
+
+                {clmImportResult ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
+                    <p className="text-sm font-medium">{clmImportResult.message || "Imported from CLM."}</p>
+                    <p className="mt-1 text-xs text-emerald-800">
+                      {clmImportResult.filename || "Document"} · {clmImportResult.provider || "clm"} ·{" "}
+                      {clmImportResult.upsertedCount ?? 0} chunk{(clmImportResult.upsertedCount ?? 0) === 1 ? "" : "s"} ·{" "}
+                      {clmImportResult.ingestionStatus || "completed"}
+                    </p>
+                    {clmImportResult.warnings?.length ? (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">
+                        {clmImportResult.warnings.map((warning, index) => (
+                          <li key={`${warning}-${index}`}>{warning}</li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

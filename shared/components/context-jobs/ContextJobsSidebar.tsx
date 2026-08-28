@@ -109,12 +109,24 @@ function AlertsIcon() {
   );
 }
 
+function ClmIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 4h7l3 3v13H8z" />
+      <path d="M15 4v3h3" />
+      <path d="M10 11h6" />
+      <path d="M10 15h6" />
+    </svg>
+  );
+}
+
 const navigation: SidebarItem[] = [
   { label: "Home", href: "/context-jobs", description: "Dashboard", icon: HomeIcon, exact: true },
   { label: "Context Jobs", href: "/context-jobs/jobs", description: "Jobs library", icon: JobsIcon },
   { label: "Templates", href: "/context-jobs/templates", description: "Template gallery", icon: TemplatesIcon },
   { label: "Keys", href: "/context-jobs/keys", description: "BYOK keys", icon: KeysIcon },
   { label: "Vector DB", href: "/context-jobs/vector-connections", description: "External KB", icon: VectorDbIcon },
+  { label: "CLM Connections", href: "/context-jobs/clm-connections", description: "Coupa / Ironclad", icon: ClmIcon },
   { label: "Runs", href: "/context-jobs/runs", description: "Run history", icon: RunsIcon },
   { label: "Alerts", href: "/context-jobs/procurement/alerts", description: "Expiry alerts", icon: AlertsIcon },
   { label: "Assets", href: "/context-jobs/assets", description: "Shared assets", icon: AssetsIcon },
