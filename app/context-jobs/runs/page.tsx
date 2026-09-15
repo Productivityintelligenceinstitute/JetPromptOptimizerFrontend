@@ -271,8 +271,7 @@ function ContextJobsRunsContent() {
       setStartedRunId(started.id);
       setIsRunComposerOpen(false);
       setRunRequest("");
-      router.replace(`/context-jobs/runs?started=${encodeURIComponent(started.id)}`);
-      await loadRuns({ quiet: true });
+      router.push(`/context-jobs/runs/${started.id}`);
     } catch (err) {
       setRunComposerError(err instanceof Error ? err.message : "Failed to start run");
     } finally {

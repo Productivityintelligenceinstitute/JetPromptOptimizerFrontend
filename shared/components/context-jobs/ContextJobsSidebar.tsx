@@ -120,17 +120,20 @@ function ClmIcon() {
   );
 }
 
-const navigation: SidebarItem[] = [
+const primaryNavigation: SidebarItem[] = [
   { label: "Home", href: "/context-jobs", description: "Dashboard", icon: HomeIcon, exact: true },
   { label: "Context Jobs", href: "/context-jobs/jobs", description: "Jobs library", icon: JobsIcon },
   { label: "Templates", href: "/context-jobs/templates", description: "Template gallery", icon: TemplatesIcon },
+  { label: "Runs", href: "/context-jobs/runs", description: "Run history", icon: RunsIcon },
+  { label: "Alerts", href: "/context-jobs/procurement/alerts", description: "Expiry alerts", icon: AlertsIcon },
+  { label: "User Guide", href: "/context-jobs/user-guide", description: "How it works", icon: GuideIcon },
+];
+
+const configurationNavigation: SidebarItem[] = [
   { label: "Keys", href: "/context-jobs/keys", description: "BYOK keys", icon: KeysIcon },
   { label: "Vector DB", href: "/context-jobs/vector-connections", description: "External KB", icon: VectorDbIcon },
   { label: "CLM Connections", href: "/context-jobs/clm-connections", description: "Coupa / Ironclad", icon: ClmIcon },
-  { label: "Runs", href: "/context-jobs/runs", description: "Run history", icon: RunsIcon },
-  { label: "Alerts", href: "/context-jobs/procurement/alerts", description: "Expiry alerts", icon: AlertsIcon },
   { label: "Assets", href: "/context-jobs/assets", description: "Shared assets", icon: AssetsIcon },
-  { label: "User Guide", href: "/context-jobs/user-guide", description: "How it works", icon: GuideIcon },
 ];
 
 const promptOptimizerLinks: SectionItem[] = [
@@ -148,7 +151,11 @@ const promptOptimizerLinks: SectionItem[] = [
   },
 ].map((item) => ({ ...item, section: "promptOptimizer" }));
 
-const contextJobLinks: SectionItem[] = navigation.map((item) => ({ ...item, section: "contextJobs" }));
+const contextJobLinks: SectionItem[] = primaryNavigation.map((item) => ({ ...item, section: "contextJobs" }));
+const configurationLinks: SectionItem[] = configurationNavigation.map((item) => ({
+  ...item,
+  section: "contextJobs",
+}));
 
 function isActivePath(pathname: string, href: string, exact?: boolean): boolean {
   if (exact) return pathname === href;
@@ -201,6 +208,51 @@ function SidebarSection({
       {items.map((item) => (
         <SidebarButton key={item.href} item={item} isOpen={isOpen} />
       ))}
+    </div>
+  );
+}
+
+function ConfigurationSection({
+  items,
+  isOpen,
+}: {
+  items: SidebarItem[];
+  isOpen: boolean;
+}) {
+  const pathname = usePathname();
+  const hasActiveItem = items.some((item) => isActivePath(pathname, item.href, item.exact));
+  const [isExpanded, setIsExpanded] = useState(hasActiveItem);
+
+  useEffect(() => {
+    if (hasActiveItem) {
+      setIsExpanded(true);
+    }
+  }, [hasActiveItem]);
+
+  if (!isOpen) {
+    return (
+      <div className="space-y-1">
+        {items.map((item) => (
+          <SidebarButton key={item.href} item={item} isOpen={isOpen} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={() => setIsExpanded((current) => !current)}
+        className="mb-1 flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-white transition-colors hover:bg-gray-800"
+        aria-expanded={isExpanded}
+      >
+        <span>Configuration</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 text-white transition-transform", isExpanded && "rotate-180")} />
+      </button>
+      {isExpanded
+        ? items.map((item) => <SidebarButton key={item.href} item={item} isOpen={isOpen} />)
+        : null}
     </div>
   );
 }
@@ -354,6 +406,8 @@ export default function ContextJobsSidebar({
           <SidebarSection title="Prompt Optimizer" items={promptOptimizerLinks} isOpen={isOpen} />
           <div className="my-3 border-t border-gray-800" />
           <SidebarSection title="Context Jobs" items={contextJobLinks} isOpen={isOpen} />
+          <div className="my-3 border-t border-gray-800" />
+          <ConfigurationSection items={configurationLinks} isOpen={isOpen} />
         </div>
 
         {isOpen ? (

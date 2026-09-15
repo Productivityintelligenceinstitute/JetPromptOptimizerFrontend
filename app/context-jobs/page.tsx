@@ -299,16 +299,20 @@ function ContextJobsDashboardContent() {
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
                 {[
-                  { label: "Jobs", value: stats?.jobCount ?? 0, note: "Created in this workspace" },
-                  { label: "Runs", value: stats?.runCount ?? 0, note: "Captured in the dashboard" },
-                  { label: "Assets", value: stats?.assetCount ?? 0, note: "Referenced by jobs" },
-                  { label: "Pass rate", value: formatPercent(stats?.passRate ?? 0), note: "Across recent evaluations" },
+                  { label: "Jobs", value: stats?.jobCount ?? 0, note: "Created in this workspace", href: "/context-jobs/jobs" },
+                  { label: "Runs", value: stats?.runCount ?? 0, note: "Captured in the dashboard", href: "/context-jobs/runs" },
+                  { label: "Assets", value: stats?.assetCount ?? 0, note: "Referenced by jobs", href: "/context-jobs/assets" },
+                  { label: "Pass rate", value: formatPercent(stats?.passRate ?? 0), note: "Across recent evaluations", href: "/context-jobs/runs" },
                 ].map((tile) => (
-                  <div key={tile.label} className="rounded-3xl border border-white/70 bg-white/85 p-5 shadow-sm backdrop-blur">
+                  <Link
+                    key={tile.label}
+                    href={tile.href}
+                    className="rounded-3xl border border-white/70 bg-white/85 p-5 shadow-sm backdrop-blur transition-colors hover:border-slate-300 hover:bg-white"
+                  >
                     <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">{tile.label}</p>
                     <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{tile.value}</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{tile.note}</p>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </section>

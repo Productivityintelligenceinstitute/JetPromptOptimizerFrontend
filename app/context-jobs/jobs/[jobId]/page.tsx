@@ -744,7 +744,7 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
       setIsStartingRun(true);
       setRunError(null);
       const started = await startContextJobRun(job.id, runRequest.trim());
-      router.push(`/context-jobs/runs?started=${encodeURIComponent(started.id)}`);
+      router.push(`/context-jobs/runs/${started.id}`);
     } catch (err) {
       setRunError(err instanceof Error ? err.message : "Failed to start run");
     } finally {
