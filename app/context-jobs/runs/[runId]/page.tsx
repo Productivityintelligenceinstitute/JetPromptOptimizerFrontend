@@ -1043,8 +1043,18 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                           Could not load the original contract
                         </p>
                         <p className="mt-1 text-sm leading-6 text-rose-800">
-                          Upload or paste the contract text to generate the revised document.
+                          Upload or paste the contract text, or retry if the demo contract is already stored.
                         </p>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            disabled={retryBusy || attachBusy}
+                            onClick={() => void handleRetryAmendment()}
+                            className="rounded-full bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {retryBusy ? "Retrying…" : "Retry — use stored contract"}
+                          </button>
+                        </div>
                         <textarea
                           value={attachText}
                           onChange={(event) => setAttachText(event.target.value)}

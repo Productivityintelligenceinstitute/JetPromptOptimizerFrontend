@@ -332,7 +332,7 @@ const defaultFormState: BuilderFormState = {
   budgetSettingsJson: JSON.stringify(
     {
       maxTokens: 4096,
-      maxLatencyMs: 30000,
+      maxLatencyMs: 300000,
       maxCostUsd: 0.5,
     },
     null,
@@ -1613,7 +1613,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     () =>
       parseJsonRecord<Record<string, unknown>>(form.budgetSettingsJson, {
         maxTokens: 4096,
-        maxLatencyMs: 30000,
+        maxLatencyMs: 300000,
         maxCostUsd: 0.5,
       }),
     [form.budgetSettingsJson]
@@ -2995,7 +2995,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                         <input
                           type="number"
                           className={formInputClass}
-                          value={Number(budgetSettings.maxLatencyMs ?? 30000)}
+                          value={Number(budgetSettings.maxLatencyMs ?? 300000)}
                           onChange={(e) => updateBudgetSettings({ maxLatencyMs: Number(e.target.value) || 0 })}
                         />
                       </label>
