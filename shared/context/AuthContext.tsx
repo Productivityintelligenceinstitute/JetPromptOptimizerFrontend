@@ -108,6 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Use ref to track current sync operation and prevent race conditions
   const syncInProgressRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const handleUserSyncRef = useRef<(firebaseUser: FirebaseUser) => Promise<void>>(async () => undefined);
+  const handleLogoutRef = useRef<() => void>(() => undefined);
 
   // Load persisted user state after the initial render so SSR and client markup match.
   useEffect(() => {
@@ -222,11 +224,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [handleLogout]);
 
-  // Initialize auth state listener
+  handleUserSyncRef.current = handleUserSync;
+  handleLogoutRef.current = handleLogout;
+
+  // Subscribe once. Re-subscribing resets loading and makes every click feel like a reload.
   useEffect(() => {
     mountedRef.current = true;
-    setIsInitialized(false);
-    setIsLoading(true);
 
     // onAuthStateChanged fires immediately with current auth state (null if not authenticated)
     // and then again whenever auth state changes
@@ -240,11 +243,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           if (firebaseUser) {
             // User is authenticated in Firebase - sync with backend
-            await handleUserSync(firebaseUser);
+            await handleUserSyncRef.current(firebaseUser);
           } else {
             // User is not authenticated in Firebase - clear local state
             // Only clear if we're sure Firebase auth state is null (not just initializing)
-            handleLogout();
+            handleLogoutRef.current();
           }
         } catch (error) {
           // If sync fails but Firebase user exists, keep Firebase auth state
@@ -290,7 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mountedRef.current = false;
       unsubscribe();
     };
-  }, [handleUserSync, handleLogout]);
+  }, []);
 
   useEffect(() => {
     if (!isInitialized) {

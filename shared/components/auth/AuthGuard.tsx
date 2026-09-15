@@ -21,8 +21,9 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         }
     }, [user, isLoading, isInitialized, router]);
 
-    // Show loading while Firebase auth state is being restored or backend sync is in progress
-    if (!isInitialized || isLoading) {
+    // Keep the current page visible if we already have a user. A full-screen
+    // spinner here makes every sidebar click feel like a 1–2s reload.
+    if ((!isInitialized || isLoading) && !user) {
         return (
             <div className="flex h-screen items-center justify-center">
                 <LoadingSpinner size="lg" />

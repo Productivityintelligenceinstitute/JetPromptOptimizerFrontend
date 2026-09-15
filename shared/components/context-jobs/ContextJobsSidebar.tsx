@@ -293,6 +293,16 @@ export default function ContextJobsSidebar({
   };
 
   useEffect(() => {
+    const hrefs = [
+      ...primaryNavigation.map((item) => item.href),
+      ...configurationNavigation.map((item) => item.href),
+    ];
+    hrefs.forEach((href) => {
+      void router.prefetch(href);
+    });
+  }, [router]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
