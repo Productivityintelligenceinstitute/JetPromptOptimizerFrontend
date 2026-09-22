@@ -25,7 +25,7 @@ import {
   type ContextJobsRunChainNode,
   type ContextJobsRunOutputPackage,
 } from "@/shared/api/contextJobs";
-import { StructuredRunResult } from "@/shared/components/context-jobs/StructuredRunResult";
+import { splitRateCardOutput, StructuredRunResult } from "@/shared/components/context-jobs/StructuredRunResult";
 import { useContextJobsEntitlements } from "@/shared/hooks/useContextJobsEntitlements";
 
 const terminalStates = new Set([
@@ -460,6 +460,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
   const [attachText, setAttachText] = useState("");
   const [attachBusy, setAttachBusy] = useState(false);
   const [retryBusy, setRetryBusy] = useState(false);
+  const [showTechnical, setShowTechnical] = useState(false);
   const mountedRef = useRef(true);
   const timerRef = useRef<number | null>(null);
   const loadInFlightRef = useRef(false);
@@ -624,7 +625,21 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
   const jobLabel = job?.name || run?.job?.name || (run?.jobId ? `Job ${run.jobId.slice(0, 8)}` : "Context Job");
   const resultContent = getResultContent(run?.runOutputPackage, run);
   const resultPreview = getResultPreviewText(resultContent);
-  const renderedResultContent = useMemo(() => renderMarkdownToHtml(resultContent), [resultContent]);
+  const isRateCard = (job?.name || "").toLowerCase().includes("rate card");
+  const rateCardSplit = useMemo(
+    () => (isRateCard ? splitRateCardOutput(resultContent) : null),
+    [isRateCard, resultContent],
+  );
+  const businessResultContent = rateCardSplit?.business || resultContent;
+  const technicalResultContent = rateCardSplit?.technical || "";
+  const renderedResultContent = useMemo(
+    () => renderMarkdownToHtml(businessResultContent),
+    [businessResultContent],
+  );
+  const renderedTechnicalResult = useMemo(
+    () => renderMarkdownToHtml(technicalResultContent),
+    [technicalResultContent],
+  );
   const validationSummary = run?.runOutputPackage?.validationSummary ?? null;
   const hasFinalResult =
     Boolean(run?.runOutputPackage?.primaryResult?.content?.trim()) ||
@@ -851,7 +866,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
           <div className="flex flex-col gap-3 sm:flex-row">
             {run?.jobId ? (
               <Link
-                href={`/context-jobs/jobs/${run.jobId}`}
+                href={`/context-jobs/jobs/${run.jobId}?runId=${run.id}`}
                 className="inline-flex w-full items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 shadow-sm transition-colors hover:bg-slate-50 sm:w-auto"
               >
                 Open job
@@ -901,44 +916,6 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                     {run.userRequest || "No user request was captured for this run."}
                   </p>
                 </div>
-
-                <div className="grid gap-2 text-sm text-slate-700 lg:w-80">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Run id</p>
-                    <p className="mt-1 break-all font-medium text-slate-900">{run.id}</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Parent job</p>
-                    <p className="mt-1 break-all font-medium text-slate-900">{run.jobId}</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-3xl border border-white/70 bg-white/90 p-5 shadow-sm backdrop-blur">
-                <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Tokens</p>
-                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{formatTokens(run.tokenUsage)}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {formatTokens(run.totalProviderTokens)} provider / {formatTokens(run.totalToolCalls)} tool calls
-                </p>
-              </div>
-              <div className="rounded-3xl border border-white/70 bg-white/90 p-5 shadow-sm backdrop-blur">
-                <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Runtime</p>
-                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{formatDuration(run.latencyMs)}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Estimated from the backend trace</p>
-              </div>
-              <div className="rounded-3xl border border-white/70 bg-white/90 p-5 shadow-sm backdrop-blur">
-                <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Started</p>
-                <p className="mt-3 text-lg font-semibold tracking-tight text-slate-900">{formatDate(run.startedAt)}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Ended {formatDate(run.endedAt)}</p>
-              </div>
-              <div className="rounded-3xl border border-white/70 bg-white/90 p-5 shadow-sm backdrop-blur">
-                <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Model</p>
-                <p className="mt-3 text-lg font-semibold tracking-tight text-slate-900">
-                  {run.executionProvider || "Not set"} / {run.executionModel || "Not set"}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Job version {run.jobVersion ?? "Not set"}</p>
               </div>
             </section>
 
@@ -964,7 +941,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                       {isReplaying ? "Replaying..." : "Replay"}
                     </button>
                     <Link
-                      href={`/context-jobs/jobs/${run.jobId}`}
+                      href={`/context-jobs/jobs/${run.jobId}?runId=${run.id}`}
                       className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
                     >
                       Open job
@@ -984,7 +961,18 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                       </div>
                     </div>
                   ) : (
-                    <StructuredRunResult content={resultContent} renderedHtml={renderedResultContent} />
+                    <>
+                      <StructuredRunResult
+                        content={businessResultContent}
+                        renderedHtml={renderedResultContent}
+                        part={isRateCard ? "business" : "full"}
+                      />
+                      {isRateCard && technicalResultContent ? (
+                        <p className="mt-4 text-sm leading-6 text-slate-600">
+                          Data sources, unmapped roles, and variance flags are under Technical details.
+                        </p>
+                      ) : null}
+                    </>
                   )}
                 </div>
 
@@ -1368,7 +1356,7 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                   <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Navigation</p>
                   <div className="mt-4 flex flex-col gap-3">
                     <Link
-                      href={`/context-jobs/jobs/${run.jobId}`}
+                      href={`/context-jobs/jobs/${run.jobId}?runId=${run.id}`}
                       className="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                     >
                       Open parent job
@@ -1379,28 +1367,6 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                     >
                       Back to runs
                     </Link>
-                  </div>
-                </div>
-
-                <div className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
-                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">State notes</p>
-                  <div className="mt-4 space-y-3">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Current state</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{meta.label}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Live polling</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{isLive ? "Running" : "Stopped"}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Workspace</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{run.workspaceId || "Not set"}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Plan</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{entitlements.plan || "Not set"}</p>
-                    </div>
                   </div>
                 </div>
 
@@ -1451,7 +1417,87 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
               </aside>
             </section>
 
-            <section className="grid gap-4 xl:grid-cols-2">
+            <section className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Technical details</p>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900">Run operations</h3>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                    Run id, tokens, runtime, model, and the execution trace stay available for audit.
+                    {isRateCard
+                      ? " Rate-card data sources, unmapped roles, and variance flags are here too."
+                      : ""}
+                    {" "}They are hidden until you open this section.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-expanded={showTechnical}
+                  onClick={() => setShowTechnical((current) => !current)}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+                >
+                  {showTechnical ? "Hide technical details" : "Show technical details"}
+                </button>
+              </div>
+
+              {showTechnical ? (
+              <div className="mt-6 space-y-4">
+              {technicalResultContent ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rate card explainability</p>
+                  <div className="mt-3">
+                    <StructuredRunResult
+                      content={technicalResultContent}
+                      renderedHtml={renderedTechnicalResult}
+                      part="technical"
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Run id</p>
+                  <p className="mt-1 break-all text-sm font-medium text-slate-900">{run.id}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Parent job</p>
+                  <p className="mt-1 break-all text-sm font-medium text-slate-900">{run.jobId}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Tokens</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{formatTokens(run.tokenUsage)}</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {formatTokens(run.totalProviderTokens)} provider / {formatTokens(run.totalToolCalls)} tool calls
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Runtime</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{formatDuration(run.latencyMs)}</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {formatDate(run.startedAt)} – {formatDate(run.endedAt)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Model</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {run.executionProvider || "Not set"} / {run.executionModel || "Not set"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">Job version {run.jobVersion ?? "Not set"}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Workspace</p>
+                  <p className="mt-1 break-all text-sm font-medium text-slate-900">{run.workspaceId || "Not set"}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Plan</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{entitlements.plan || "Not set"}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Live polling</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{isLive ? "Running" : "Stopped"}</p>
+                </div>
+              </div>
+            <div className="grid gap-4 xl:grid-cols-2">
               <div className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Execution trace</p>
                 <h3 className="mt-2 text-xl font-semibold text-slate-900">Steps, tools, and validation</h3>
@@ -1500,6 +1546,9 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                   </div>
                 )}
               </div>
+            </div>
+            </div>
+              ) : null}
             </section>
           </div>
         ) : (

@@ -123,10 +123,18 @@ function ClmIcon() {
 const primaryNavigation: SidebarItem[] = [
   { label: "Home", href: "/context-jobs", description: "Dashboard", icon: HomeIcon, exact: true },
   { label: "Context Jobs", href: "/context-jobs/jobs", description: "Jobs library", icon: JobsIcon },
-  { label: "Templates", href: "/context-jobs/templates", description: "Template gallery", icon: TemplatesIcon },
   { label: "Runs", href: "/context-jobs/runs", description: "Run history", icon: RunsIcon },
   { label: "Alerts", href: "/context-jobs/procurement/alerts", description: "Expiry alerts", icon: AlertsIcon },
   { label: "User Guide", href: "/context-jobs/user-guide", description: "How it works", icon: GuideIcon },
+];
+
+const templateNavigation: SidebarItem[] = [
+  {
+    label: "Procurement Intelligence",
+    href: "/context-jobs/templates",
+    description: "Procurement templates",
+    icon: TemplatesIcon,
+  },
 ];
 
 const configurationNavigation: SidebarItem[] = [
@@ -153,6 +161,10 @@ const promptOptimizerLinks: SectionItem[] = [
 
 const contextJobLinks: SectionItem[] = primaryNavigation.map((item) => ({ ...item, section: "contextJobs" }));
 const configurationLinks: SectionItem[] = configurationNavigation.map((item) => ({
+  ...item,
+  section: "contextJobs",
+}));
+const templateLinks: SectionItem[] = templateNavigation.map((item) => ({
   ...item,
   section: "contextJobs",
 }));
@@ -212,10 +224,12 @@ function SidebarSection({
   );
 }
 
-function ConfigurationSection({
+function CollapsibleNavSection({
+  title,
   items,
   isOpen,
 }: {
+  title: string;
   items: SidebarItem[];
   isOpen: boolean;
 }) {
@@ -247,7 +261,7 @@ function ConfigurationSection({
         className="mb-1 flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-white transition-colors hover:bg-gray-800"
         aria-expanded={isExpanded}
       >
-        <span>Configuration</span>
+        <span>{title}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 text-white transition-transform", isExpanded && "rotate-180")} />
       </button>
       {isExpanded
@@ -295,6 +309,7 @@ export default function ContextJobsSidebar({
   useEffect(() => {
     const hrefs = [
       ...primaryNavigation.map((item) => item.href),
+      ...templateNavigation.map((item) => item.href),
       ...configurationNavigation.map((item) => item.href),
     ];
     hrefs.forEach((href) => {
@@ -417,7 +432,9 @@ export default function ContextJobsSidebar({
           <div className="my-3 border-t border-gray-800" />
           <SidebarSection title="Context Jobs" items={contextJobLinks} isOpen={isOpen} />
           <div className="my-3 border-t border-gray-800" />
-          <ConfigurationSection items={configurationLinks} isOpen={isOpen} />
+          <CollapsibleNavSection title="Templates" items={templateLinks} isOpen={isOpen} />
+          <div className="my-3 border-t border-gray-800" />
+          <CollapsibleNavSection title="Configuration" items={configurationLinks} isOpen={isOpen} />
         </div>
 
         {isOpen ? (

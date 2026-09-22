@@ -334,7 +334,10 @@ function ContextJobsRunsContent() {
             <p className="text-sm font-medium">
               Run started. Status updates live on this page — open the run when you want the full detail.
             </p>
-            <p className="mt-1 break-all text-xs text-blue-800">Run id: {startedRunId}</p>
+            <details className="mt-2 text-xs text-blue-800">
+              <summary className="cursor-pointer font-semibold">Technical details</summary>
+              <p className="mt-1 break-all">Run id: {startedRunId}</p>
+            </details>
           </div>
         ) : null}
 
@@ -530,16 +533,13 @@ function ContextJobsRunsContent() {
                           </div>
 
                           <div className="min-w-0 space-y-1">
-                            <p className="text-lg font-semibold text-slate-900">Run {run.id.slice(0, 8)}</p>
-                            <p className="text-sm text-slate-600">
-                              <Link
-                                href={`/context-jobs/jobs/${run.jobId}`}
-                                className="font-semibold text-blue-700 hover:text-blue-900"
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                {jobName}
-                              </Link>
-                            </p>
+                            <Link
+                              href={`/context-jobs/jobs/${run.jobId}?runId=${run.id}`}
+                              className="text-lg font-semibold text-slate-900 hover:text-blue-800"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {jobName}
+                            </Link>
                           </div>
 
                           <p className="max-w-3xl text-sm leading-6 text-slate-600">
@@ -551,24 +551,26 @@ function ContextJobsRunsContent() {
                             <span className="rounded-full bg-slate-50 px-3 py-1">
                               {run.endedAt ? `Ended ${formatDate(run.endedAt)}` : "Still in progress"}
                             </span>
-                            <span className="rounded-full bg-slate-50 px-3 py-1">{formatTokens(run.tokenUsage)} tokens</span>
-                            <span className="rounded-full bg-slate-50 px-3 py-1">{formatDuration(run.latencyMs)} latency</span>
-                            {run.executionProvider ? <span className="rounded-full bg-slate-50 px-3 py-1">{run.executionProvider}</span> : null}
-                            {run.executionModel ? <span className="rounded-full bg-slate-50 px-3 py-1">{run.executionModel}</span> : null}
                           </div>
+                          <details className="text-xs text-slate-500" onClick={(event) => event.stopPropagation()}>
+                            <summary className="cursor-pointer font-semibold text-slate-700">Technical details</summary>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span className="rounded-full bg-slate-50 px-3 py-1">{formatTokens(run.tokenUsage)} tokens</span>
+                              <span className="rounded-full bg-slate-50 px-3 py-1">{formatDuration(run.latencyMs)} latency</span>
+                              {run.executionProvider ? <span className="rounded-full bg-slate-50 px-3 py-1">{run.executionProvider}</span> : null}
+                              {run.executionModel ? <span className="rounded-full bg-slate-50 px-3 py-1">{run.executionModel}</span> : null}
+                              <span className="break-all rounded-full bg-slate-50 px-3 py-1">Run id {run.id}</span>
+                            </div>
+                          </details>
                         </div>
 
                         <div className="flex flex-col gap-3 lg:w-56">
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Run id</p>
-                            <p className="mt-1 break-all text-sm font-semibold text-slate-900">{run.id}</p>
-                          </div>
                           <button
                             type="button"
                             className="rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
                             onClick={(event) => {
                               event.stopPropagation();
-                              router.push(`/context-jobs/jobs/${run.jobId}`);
+                              router.push(`/context-jobs/jobs/${run.jobId}?runId=${run.id}`);
                             }}
                           >
                             Open job

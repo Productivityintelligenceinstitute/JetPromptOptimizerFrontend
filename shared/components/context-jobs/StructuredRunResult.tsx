@@ -290,98 +290,99 @@ function ScorecardResultView({ data }: { data: ParsedScorecard }) {
   );
 }
 
-function RateCardScorecardView({ data }: { data: ParsedScorecard }) {
+function RateCardScorecardView({
+  data,
+  part = "full",
+}: {
+  data: ParsedScorecard;
+  part?: "full" | "business" | "technical";
+}) {
   const rows = asObjectRows(data.normalizedRows);
   const variance = asObjectRows(data.varianceFlags);
   const concentration = asObjectRows(data.spendConcentration);
   const unmapped = asStringList(data.unmappedTitles);
   const challenges = asStringList(data.challengeList);
+  const showBusiness = part !== "technical";
+  const showTechnical = part !== "business";
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Normalized rows</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{rows.length}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Variance flags</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{variance.length}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Unmapped titles</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{unmapped.length}</p>
-        </div>
-      </div>
+      {showBusiness ? (
+        <>
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Normalized rows</p>
+            <ObjectTable
+              rows={rows}
+              columns={preferredColumns(rows, [
+                "vendor",
+                "title",
+                "mappedRole",
+                "mappedLevel",
+                "rate",
+                "mapped",
+              ])}
+            />
+          </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Normalized rows</p>
-        <ObjectTable
-          rows={rows}
-          columns={preferredColumns(rows, [
-            "vendor",
-            "title",
-            "mappedRole",
-            "mappedLevel",
-            "rate",
-            "mapped",
-          ])}
-        />
-      </div>
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Spend concentration</p>
+            <ObjectTable
+              rows={concentration}
+              columns={preferredColumns(concentration, [
+                "vendor",
+                "totalSpend",
+                "sharePercent",
+                "rowCount",
+                "basis",
+              ])}
+            />
+          </div>
 
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Variance flags</p>
-        <ObjectTable
-          rows={variance}
-          columns={preferredColumns(variance, [
-            "title",
-            "level",
-            "rate",
-            "groupMeanRate",
-            "variancePercent",
-            "reason",
-          ])}
-        />
-      </div>
+          {challenges.length ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-800">Challenge list</p>
+              <ul className="mt-2 space-y-1 text-sm text-rose-950">
+                {challenges.map((item) => (
+                  <li key={item}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
-      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Spend concentration</p>
-        <ObjectTable
-          rows={concentration}
-          columns={preferredColumns(concentration, [
-            "vendor",
-            "totalSpend",
-            "sharePercent",
-            "rowCount",
-            "basis",
-          ])}
-        />
-      </div>
+      {showTechnical ? (
+        <>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Variance flags</p>
+            <ObjectTable
+              rows={variance}
+              columns={preferredColumns(variance, [
+                "title",
+                "level",
+                "rate",
+                "groupMeanRate",
+                "variancePercent",
+                "reason",
+              ])}
+            />
+          </div>
 
-      {unmapped.length ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Unmapped titles</p>
-          <ul className="mt-2 space-y-1 text-sm text-amber-950">
-            {unmapped.map((item) => (
-              <li key={item}>- {item}</li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-          No unmapped titles.
-        </div>
-      )}
-
-      {challenges.length ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-rose-800">Challenge list</p>
-          <ul className="mt-2 space-y-1 text-sm text-rose-950">
-            {challenges.map((item) => (
-              <li key={item}>- {item}</li>
-            ))}
-          </ul>
-        </div>
+          {unmapped.length ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Unmapped titles</p>
+              <ul className="mt-2 space-y-1 text-sm text-amber-950">
+                {unmapped.map((item) => (
+                  <li key={item}>- {item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              No unmapped titles.
+            </div>
+          )}
+        </>
       ) : null}
     </div>
   );
@@ -495,13 +496,16 @@ function GenericJsonResultView({ data }: { data: Record<string, unknown> }) {
 export function StructuredRunResult({
   content,
   renderedHtml,
+  part = "full",
 }: {
   content: string;
   renderedHtml: string;
+  part?: "full" | "business" | "technical";
 }) {
   const parsed = useMemo(() => tryParseJsonResult(content), [content]);
 
   if (!parsed) {
+    if (!renderedHtml.trim()) return null;
     return (
       <div
         className="space-y-4 text-sm"
@@ -530,7 +534,7 @@ export function StructuredRunResult({
   if (isContractOrCapabilityScorecard) {
     body = <ScorecardResultView data={parsed} />;
   } else if (isRateCardScorecard) {
-    body = <RateCardScorecardView data={parsed} />;
+    body = <RateCardScorecardView data={parsed} part={part} />;
   } else if (isOnboardingScorecard) {
     body = <OnboardingScorecardView data={parsed} />;
   }
@@ -538,12 +542,87 @@ export function StructuredRunResult({
   return (
     <div className="space-y-4">
       {body}
-      <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-700">Raw JSON</summary>
-        <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-slate-600">
-          {JSON.stringify(parsed, null, 2)}
-        </pre>
-      </details>
+      {part === "full" ? (
+        <details className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">Raw JSON</summary>
+          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-slate-600">
+            {JSON.stringify(parsed, null, 2)}
+          </pre>
+        </details>
+      ) : null}
     </div>
   );
+}
+
+const RATE_CARD_TECHNICAL_HEADING = [
+  "unmapped role",
+  "unmapped title",
+  "variance flag",
+  "data source",
+  "evidence gap",
+  "taxonomy mapping",
+];
+
+function rateCardHeadingKey(line: string): string | null {
+  const trimmed = line.trim();
+  const markdown = /^(#{1,6})\s+(.+)$/.exec(trimmed);
+  const bold = /^\*\*(.+?)\*\*:?$/.exec(trimmed);
+  const colon = /^([A-Za-z][A-Za-z0-9 /&()>%-]{2,80}):$/.exec(trimmed);
+  const raw = markdown?.[2] || bold?.[1] || colon?.[1];
+  if (!raw) return null;
+  return raw.replace(/[*_`]/g, "").split(":")[0].trim().toLowerCase();
+}
+
+function isRateCardTechnicalHeading(heading: string): boolean {
+  return RATE_CARD_TECHNICAL_HEADING.some((needle) => heading.includes(needle));
+}
+
+export function splitRateCardOutput(content: string): { business: string; technical: string } {
+  const text = (content || "").trim();
+  if (!text) return { business: "", technical: "" };
+
+  if (text.startsWith("{") || text.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const technicalKeys = ["unmappedTitles", "varianceFlags", "evidenceGaps", "dataSources"];
+        const technical: Record<string, unknown> = {};
+        const business: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(parsed)) {
+          if (technicalKeys.includes(key)) technical[key] = value;
+          else business[key] = value;
+        }
+        return {
+          business: JSON.stringify(business),
+          technical: Object.keys(technical).length ? JSON.stringify(technical) : "",
+        };
+      }
+    } catch {
+      // Fall through to markdown splitting.
+    }
+  }
+
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const business: string[] = [];
+  const technical: string[] = [];
+  let bucket = business;
+  let sawHeading = false;
+
+  for (const line of lines) {
+    const heading = rateCardHeadingKey(line);
+    if (heading) {
+      sawHeading = true;
+      bucket = isRateCardTechnicalHeading(heading) ? technical : business;
+    }
+    bucket.push(line);
+  }
+
+  if (!sawHeading || technical.length === 0) {
+    return { business: text, technical: "" };
+  }
+
+  return {
+    business: business.join("\n").trim(),
+    technical: technical.join("\n").trim(),
+  };
 }

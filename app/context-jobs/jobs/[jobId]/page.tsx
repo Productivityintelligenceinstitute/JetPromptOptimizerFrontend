@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import AuthGuard from "@/shared/components/auth/AuthGuard";
 import {
   getContextJob,
@@ -563,6 +563,9 @@ function normalizeJobId(jobIdParam: string | string[] | undefined): string | nul
 
 function ContextJobDetailContent({ jobId }: { jobId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightedRunId = searchParams.get("runId");
+  const latestRunsRef = useRef<HTMLElement | null>(null);
   const { user } = useAuth();
   const entitlements = useContextJobsEntitlements();
   const [job, setJob] = useState<ContextJob | null>(null);
@@ -706,6 +709,11 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!highlightedRunId) return;
+    latestRunsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [highlightedRunId, stats]);
 
   const toggleVersionExpanded = (versionId: string) => {
     setExpandedVersionIds((current) => ({ ...current, [versionId]: !current[versionId] }));
@@ -1014,6 +1022,65 @@ function ContextJobDetailContent({ jobId }: { jobId: string }) {
                 >
                   Back to jobs
                 </Link>
+              </div>
+            </section>
+
+            <section
+              ref={latestRunsRef}
+              className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Completed work</p>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900">Runs for this job</h3>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                    Opening this job shows the work already run here. Start another request only if you need a new execution.
+                  </p>
+                </div>
+                <Link
+                  href="/context-jobs/runs"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+                >
+                  View all runs
+                </Link>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {stats?.recentRuns?.length ? (
+                  stats.recentRuns.map((recentRun) => {
+                    const isHighlighted = highlightedRunId === recentRun.runId;
+                    return (
+                      <Link
+                        key={recentRun.runId}
+                        href={`/context-jobs/runs/${recentRun.runId}`}
+                        className={`block rounded-2xl border px-4 py-4 transition-colors ${
+                          isHighlighted
+                            ? "border-teal-400 bg-teal-50 ring-2 ring-teal-200"
+                            : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {isHighlighted ? "Run you just opened · " : ""}
+                            {formatRunLabel(recentRun.runId, recentRun.outcome)}
+                          </p>
+                          <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            {recentRun.state}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Started {recentRun.startedAt ? new Date(recentRun.startedAt).toLocaleString() : "Not set"}
+                          {recentRun.endedAt ? ` · Ended ${new Date(recentRun.endedAt).toLocaleString()}` : ""}
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-teal-800">Open this run</p>
+                      </Link>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm leading-6 text-slate-600">
+                    No runs yet. Use the launcher below to start the first one.
+                  </p>
+                )}
               </div>
             </section>
 
@@ -1702,7 +1769,17 @@ export default function ContextJobDetailPage() {
   return (
     <AuthGuard>
       {jobId ? (
-        <ContextJobDetailContent jobId={jobId} />
+        <Suspense
+          fallback={
+            <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.12),_transparent_42%),linear-gradient(180deg,_#f7fcfc_0%,_#f4f8f8_100%)]">
+              <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 sm:pt-28 pt-24">
+                <p className="text-sm text-slate-600">Loading job...</p>
+              </div>
+            </div>
+          }
+        >
+          <ContextJobDetailContent jobId={jobId} />
+        </Suspense>
       ) : (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.12),_transparent_42%),linear-gradient(180deg,_#f7fcfc_0%,_#f4f8f8_100%)]">
           <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 sm:pt-28 pt-24">

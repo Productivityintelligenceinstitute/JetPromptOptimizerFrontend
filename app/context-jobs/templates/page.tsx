@@ -144,10 +144,10 @@ function TemplateGalleryContent() {
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl space-y-3">
             <p className="inline-flex rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
-              Procurement flagship
+              Templates
             </p>
             <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-              Template gallery
+              Procurement Intelligence
             </h1>
             <p className="text-sm leading-6 text-slate-600 sm:text-base">
               Four governed procurement workflows — each with Full, Executive, and Scorecard output
