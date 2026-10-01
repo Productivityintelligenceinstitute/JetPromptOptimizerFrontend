@@ -138,7 +138,16 @@ export const WORKFLOW_CATEGORY_PROFILES: Record<string, WorkflowCategoryProfile>
   procurement: {
     tools: ONBOARDING_TOOLS,
     specialtyRules: ONBOARDING_RULES,
-    summary: "Onboarding checklist tools + onboarding risk threshold",
+    summary: "Onboarding tools + onboarding risk threshold",
+  },
+  research: {
+    tools: [
+      perm("doc-reader", { readOnly: true }),
+      perm("web-search", { readOnly: true }),
+      perm("docx-generate"),
+    ],
+    specialtyRules: [],
+    summary: "Category briefing tools (doc-reader, web-search) with citation and format checks left in place",
   },
 };
 

@@ -14,6 +14,8 @@ import {
   getContextJobsTools,
   getContextJobsVectorConnections,
   updateContextJob,
+  downloadWorkflowCanvas,
+  parseWorkflowCanvas,
   type ContextJob,
   type ContextJobAsset,
   type ContextJobMutationPayload,
@@ -994,6 +996,9 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   const [isLoadingJob, setIsLoadingJob] = useState(mode === "edit");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [canvasMessage, setCanvasMessage] = useState<string | null>(null);
+  const [canvasBusy, setCanvasBusy] = useState(false);
+  const canvasInputRef = useRef<HTMLInputElement | null>(null);
   const [llmKeys, setLlmKeys] = useState<ContextJobsLlmKey[]>([]);
   const [keyModels, setKeyModels] = useState<ContextJobsProviderModel[]>([]);
   const [vectorConnections, setVectorConnections] = useState<ContextJobsVectorConnection[]>([]);
@@ -1455,6 +1460,60 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
 
   const handleChange = <K extends keyof BuilderFormState>(key: K, value: BuilderFormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleDownloadWorkflowCanvas = async (): Promise<void> => {
+    setCanvasBusy(true);
+    setCanvasMessage(null);
+    setError(null);
+    try {
+      const blob = await downloadWorkflowCanvas();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "JET-workflow-canvas.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setCanvasMessage("Workflow sheet downloaded. Fill it, then upload it here.");
+    } catch (downloadError) {
+      setError(downloadError);
+    } finally {
+      setCanvasBusy(false);
+    }
+  };
+
+  const handleWorkflowCanvasSelected = async (file: File | undefined): Promise<void> => {
+    if (!file) return;
+    setCanvasBusy(true);
+    setCanvasMessage(null);
+    setError(null);
+    try {
+      const applied = await parseWorkflowCanvas(file, form.stableInstructions);
+      setForm((current) => ({
+        ...current,
+        ...(applied.name ? { name: applied.name } : {}),
+        ...(applied.description ? { description: applied.description } : {}),
+        ...(applied.goal ? { goal: applied.goal } : {}),
+        ...(applied.stableInstructions ? { stableInstructions: applied.stableInstructions } : {}),
+        ...(applied.roleConfiguration ? { roleConfiguration: applied.roleConfiguration } : {}),
+        ...(applied.outputTemplate ? { outputTemplate: applied.outputTemplate } : {}),
+        ...(applied.escalationPolicy ? { escalationPolicy: applied.escalationPolicy } : {}),
+      }));
+      const count = applied.appliedFields?.length ?? 0;
+      setCanvasMessage(
+        count > 0
+          ? `Uploaded. ${count} field${count === 1 ? "" : "s"} filled. Review Purpose and Instructions, then save.`
+          : "Uploaded, but no fields were filled.",
+      );
+      setStep(0);
+    } catch (uploadError) {
+      setError(uploadError);
+    } finally {
+      setCanvasBusy(false);
+      if (canvasInputRef.current) canvasInputRef.current.value = "";
+    }
   };
 
   const handleWorkflowTypeSelect = (nextType: string): void => {
@@ -2074,6 +2133,41 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
 
         <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)]">
           <section className="min-w-0 rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+            <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Workflow sheet</p>
+              <h3 className="mt-2 text-lg font-semibold text-slate-900">Design the workflow offline</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Download the Excel canvas, fill it with your team, then upload it. Filled cells map into this job.
+                Trigger replaces the description. End state replaces the goal. The other canvas answers are added to the instructions.
+                Empty cells are left alone. This does not ingest documents.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={canvasBusy}
+                  onClick={() => void handleDownloadWorkflowCanvas()}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {canvasBusy ? "Working..." : "Download workflow sheet"}
+                </button>
+                <button
+                  type="button"
+                  disabled={canvasBusy}
+                  onClick={() => canvasInputRef.current?.click()}
+                  className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Upload filled sheet
+                </button>
+                <input
+                  ref={canvasInputRef}
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(event) => void handleWorkflowCanvasSelected(event.target.files?.[0])}
+                />
+              </div>
+              {canvasMessage ? <p className="mt-3 text-sm text-teal-800">{canvasMessage}</p> : null}
+            </div>
             <div className="flex max-w-full flex-nowrap gap-2 overflow-x-auto pb-2">
               {STEPS.map((item) => {
                 const active = item.id === step;

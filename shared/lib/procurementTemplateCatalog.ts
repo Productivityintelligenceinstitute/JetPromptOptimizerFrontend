@@ -1,6 +1,6 @@
 /**
  * Procurement flagship template catalog — groups system templates into
- * 4 families × Full / Executive / Scorecard personas for the gallery.
+ * 5 families × Full / Executive / Scorecard personas for the gallery.
  */
 
 export type TemplatePersona = "full" | "executive" | "scorecard";
@@ -9,7 +9,8 @@ export type TemplateFamilyId =
   | "contract_review"
   | "supplier_capability"
   | "rate_card"
-  | "supplier_onboarding";
+  | "supplier_onboarding"
+  | "category_strategy";
 
 export type LifecycleGuide = {
   nextJobName: string;
@@ -165,6 +166,24 @@ export const TEMPLATE_FAMILIES: TemplateFamilyMeta[] = [
     workflowTypes: ["procurement"],
     demoHint: "Best after Capability Matrix, or with vendor profiles from the demo KB.",
     baseName: "Supplier Onboarding Checklist",
+  },
+  {
+    id: "category_strategy",
+    title: "Category Strategy Intelligence Briefing",
+    summary:
+      "A 1–2 page briefing for category leaders: what changed, why it matters to the current strategy, and whether to act, investigate, monitor, or leave it.",
+    problem: "Category updates are assembled by hand from email, spreadsheets, and expert memory.",
+    outcome: "A stakeholder briefing with evidence, a strategy connection, and one disposition per issue.",
+    inputsNeeded: [
+      "Approved category strategy — job knowledge base or User request",
+      "Business priorities, supplier signals, or market notes — knowledge base or User request",
+      "Optional: fill the workflow sheet offline and upload it in the job builder",
+    ],
+    inputSetupNote:
+      "Best path: ingest the approved category strategy and any supplier or market notes on the job page, then say what decision this briefing is for in the User request. On Purpose, download the workflow sheet, fill Trigger, Inputs, Human Decision, and End State with the team, and upload it. The sheet fills the job fields. It does not replace document ingest.",
+    workflowTypes: ["research"],
+    demoHint: "Demo KB includes an approved cloud category strategy, stakeholder priorities, and a September signals log.",
+    baseName: "Category Strategy Intelligence Briefing",
   },
 ];
 

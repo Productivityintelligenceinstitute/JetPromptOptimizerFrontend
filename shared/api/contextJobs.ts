@@ -718,6 +718,50 @@ export const getContextJobsTemplates = async (): Promise<ContextJob[]> => {
   }
 };
 
+export interface WorkflowCanvasApplyResult {
+  name?: string;
+  description?: string;
+  goal?: string;
+  stableInstructions?: string;
+  roleConfiguration?: string;
+  outputTemplate?: string;
+  escalationPolicy?: string;
+  appliedFields: string[];
+}
+
+export const downloadWorkflowCanvas = async (): Promise<Blob> => {
+  try {
+    const response = await apiClient.get<Blob>("/context-jobs/workflow-canvas/template", {
+      responseType: "blob",
+      timeout: 60000,
+    });
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "downloadWorkflowCanvas");
+    throw normalizedError;
+  }
+};
+
+export const parseWorkflowCanvas = async (
+  file: File,
+  currentStableInstructions: string,
+): Promise<WorkflowCanvasApplyResult> => {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("currentStableInstructions", currentStableInstructions);
+    const response = await apiClient.post<WorkflowCanvasApplyResult>("/context-jobs/workflow-canvas/parse", formData, {
+      timeout: 60000,
+    });
+    return response.data;
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    logError(normalizedError, "parseWorkflowCanvas");
+    throw normalizedError;
+  }
+};
+
 export const instantiateContextJobTemplate = async (templateId: string): Promise<Record<string, unknown>> => {
   try {
     const response = await apiClient.post<Record<string, unknown>>(`/context-jobs/templates/${templateId}/instantiate`);
