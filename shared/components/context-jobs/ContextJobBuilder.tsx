@@ -60,6 +60,7 @@ const WORKFLOW_TYPES = [
   { value: "procurement", label: "Procurement" },
   { value: "contract_review", label: "Contract review" },
   { value: "supplier_assessment", label: "Supplier assessment" },
+  { value: "sow_intelligence", label: "SOW intelligence" },
 ] as const;
 
 const RETRIEVAL_MODES = [
@@ -1051,17 +1052,22 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
   });
   const [validationRuleError, setValidationRuleError] = useState<string | null>(null);
   const draftPrefillAppliedRef = useRef(false);
+  const builderSectionRef = useRef<HTMLElement | null>(null);
   const isFirstStep = step === STEPS[0].id;
   const isLastStep = step === STEPS[STEPS.length - 1].id;
 
+  const scrollBuilderIntoView = (): void => {
+    builderSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const goToPreviousStep = (): void => {
     setStep((current) => Math.max(STEPS[0].id, current - 1) as BuilderStep);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollBuilderIntoView();
   };
 
   const goToNextStep = (): void => {
     setStep((current) => Math.min(STEPS[STEPS.length - 1].id, current + 1) as BuilderStep);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollBuilderIntoView();
   };
 
   useEffect(() => {
@@ -1138,6 +1144,10 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
         setLlmKeys(keys);
 
         setForm((current) => {
+          if (mode !== "new") {
+            return current;
+          }
+
           if (keys.length === 0) {
             return {
               ...current,
@@ -1148,18 +1158,6 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
 
           if (keys.some((key) => key.id === current.llmKeyId)) {
             return current;
-          }
-
-          if (mode !== "new") {
-            if (!current.llmKeyId) {
-              return current;
-            }
-
-            return {
-              ...current,
-              llmKeyId: "",
-              executionModel: "",
-            };
           }
 
           return {
@@ -1204,6 +1202,9 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
           if (!mounted) return;
           setKeyModels(models);
           setForm((current) => {
+            if (mode !== "new") {
+              return current;
+            }
             if (models.length === 0) {
               return current;
             }
@@ -1246,6 +1247,9 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
       }));
       setKeyModels(models);
       setForm((current) => {
+        if (mode !== "new") {
+          return current;
+        }
         if (models.length === 0) {
           return current;
         }
@@ -1491,23 +1495,39 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     setError(null);
     try {
       const applied = await parseWorkflowCanvas(file, form.stableInstructions);
+      const filled = {
+        name: applied.name,
+        description: applied.description,
+        goal: applied.goal,
+        stableInstructions: applied.stableInstructions,
+        roleConfiguration: applied.roleConfiguration,
+        outputTemplate: applied.outputTemplate,
+        escalationPolicy: applied.escalationPolicy,
+      };
+      const changed = (Object.keys(filled) as (keyof typeof filled)[]).some((key) => {
+        const next = filled[key];
+        return Boolean(next) && next !== form[key];
+      });
       setForm((current) => ({
         ...current,
-        ...(applied.name ? { name: applied.name } : {}),
-        ...(applied.description ? { description: applied.description } : {}),
-        ...(applied.goal ? { goal: applied.goal } : {}),
-        ...(applied.stableInstructions ? { stableInstructions: applied.stableInstructions } : {}),
-        ...(applied.roleConfiguration ? { roleConfiguration: applied.roleConfiguration } : {}),
-        ...(applied.outputTemplate ? { outputTemplate: applied.outputTemplate } : {}),
-        ...(applied.escalationPolicy ? { escalationPolicy: applied.escalationPolicy } : {}),
+        ...(filled.name ? { name: filled.name } : {}),
+        ...(filled.description ? { description: filled.description } : {}),
+        ...(filled.goal ? { goal: filled.goal } : {}),
+        ...(filled.stableInstructions ? { stableInstructions: filled.stableInstructions } : {}),
+        ...(filled.roleConfiguration ? { roleConfiguration: filled.roleConfiguration } : {}),
+        ...(filled.outputTemplate ? { outputTemplate: filled.outputTemplate } : {}),
+        ...(filled.escalationPolicy ? { escalationPolicy: filled.escalationPolicy } : {}),
       }));
       const count = applied.appliedFields?.length ?? 0;
       setCanvasMessage(
-        count > 0
-          ? `Uploaded. ${count} field${count === 1 ? "" : "s"} filled. Review Purpose and Instructions, then save.`
-          : "Uploaded, but no fields were filled.",
+        count === 0
+          ? "Uploaded, but no fields were filled."
+          : changed
+            ? `Uploaded. ${count} field${count === 1 ? "" : "s"} filled. Review Purpose and Instructions, then use Save changes in the bar above.`
+            : "Uploaded. Those answers are already on this job, so Save stays off. Use Run job.",
       );
       setStep(0);
+      scrollBuilderIntoView();
     } catch (uploadError) {
       setError(uploadError);
     } finally {
@@ -1689,6 +1709,13 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     return Object.keys(buildPatchPayload(form, baselineForm, toolCatalog)).length > 0;
   }, [baselineForm, form, mode, toolCatalog]);
 
+  const toolPermissionsTouched = useMemo(() => {
+    if (mode !== "edit" || !baselineForm) {
+      return mode === "new";
+    }
+    return Object.keys(buildPatchPayload(form, baselineForm, toolCatalog)).includes("toolPermissions");
+  }, [baselineForm, form, mode, toolCatalog]);
+
   const isJobReadyToSave = useMemo(() => {
     const hasName = form.name.trim().length > 0;
     const hasWorkflowType = form.workflowType.trim().length > 0;
@@ -1699,21 +1726,54 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     const hasExecutionModel = form.executionModel.trim().length > 0;
     const hasLlmKey = requiresLlmKey ? form.llmKeyId.trim().length > 0 : true;
     const hasRequiredToolKeys = toolsMissingKeys.length === 0;
-
-    return (
-      hasName &&
-      hasWorkflowType &&
-      hasRetrievalMode &&
-      hasVectorConnection &&
+    const contentReady = hasName && hasWorkflowType && hasRetrievalMode && hasVectorConnection;
+    const executionReady =
       hasExecutionProvider &&
       hasExecutionMode &&
       hasExecutionModel &&
       hasLlmKey &&
-      hasRequiredToolKeys
-    );
-  }, [requiresLlmKey, form, toolsMissingKeys.length]);
+      hasRequiredToolKeys;
+
+    if (!contentReady) return false;
+    if (mode === "new") return executionReady;
+    if (toolPermissionsTouched && !hasRequiredToolKeys) return false;
+    return true;
+  }, [toolPermissionsTouched, mode, requiresLlmKey, form, toolsMissingKeys.length]);
 
   const isSaveDisabled = isSaving || (mode === "edit" && !hasUnsavedChanges) || !isJobReadyToSave;
+  const saveDisabledReason = useMemo(() => {
+    if (isSaving || !isSaveDisabled) return null;
+    if (!form.name.trim()) return "Add a job name on Purpose before saving.";
+    if (!form.workflowType.trim()) return "Choose a job category before saving.";
+    if (form.retrievalMode === "external" && !form.vectorConnectionId.trim()) {
+      return "Choose a vector connection before saving.";
+    }
+    if (mode === "new" && requiresLlmKey && !form.llmKeyId.trim()) {
+      return "Select an API key on Tools before saving.";
+    }
+    if (mode === "new" && !form.executionModel.trim()) {
+      return "Select a model on Tools before saving.";
+    }
+    if (toolsMissingKeys.length > 0 && (mode === "new" || toolPermissionsTouched)) {
+      return "Add the required tool keys on Tools before saving.";
+    }
+    if (mode === "edit" && !hasUnsavedChanges) return "Nothing new to save. Run job stays on this job.";
+    return null;
+  }, [
+    form.executionModel,
+    form.name,
+    form.retrievalMode,
+    form.vectorConnectionId,
+    form.workflowType,
+    hasUnsavedChanges,
+    isSaveDisabled,
+    isSaving,
+    mode,
+    requiresLlmKey,
+    form.llmKeyId,
+    toolsMissingKeys.length,
+    toolPermissionsTouched,
+  ]);
 
   const handleExecutionProviderChange = (provider: string): void => {
     setForm((current) => ({
@@ -2007,7 +2067,7 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
       return;
     }
 
-    if (requiresLlmKey && !form.llmKeyId.trim()) {
+    if (mode === "new" && requiresLlmKey && !form.llmKeyId.trim()) {
       setError(
         llmKeys.length > 0
           ? "Select an API key for the chosen provider."
@@ -2016,12 +2076,12 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
       return;
     }
 
-    if (!form.executionModel.trim()) {
+    if (mode === "new" && !form.executionModel.trim()) {
       setError("Execution model is required.");
       return;
     }
 
-    if (toolsMissingKeys.length > 0) {
+    if ((mode === "new" || toolPermissionsTouched) && toolsMissingKeys.length > 0) {
       const details = toolsMissingKeys
         .map((tool) => `${tool.label} (${tool.externalProvider || "key required"})`)
         .join(", ");
@@ -2064,6 +2124,19 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
     }
   };
 
+  const handleOpenRun = (): void => {
+    if (mode !== "edit" || !jobId) return;
+    if (hasUnsavedChanges && isSaveDisabled) {
+      setError(saveDisabledReason || "Save this job before running it.");
+      return;
+    }
+    if (hasUnsavedChanges) {
+      void handleSave();
+      return;
+    }
+    router.push(`/context-jobs/jobs/${jobId}`);
+  };
+
   if (mode === "edit" && isLoadingJob) {
     return (
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_transparent_42%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_100%)]">
@@ -2090,8 +2163,8 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
             </h1>
             <p className="text-sm leading-6 text-slate-600 sm:text-base">
               {mode === "edit"
-                ? "Adjust the builder steps, keep the summary map in view, and save or publish from the review step."
-                : "A guided setup with a live summary and a clean draft-to-publish flow."}
+                ? "Adjust this job, then save or run from the bar at the top of the workflow."
+                : "Fill the steps, then create the job from the bar at the top of the workflow."}
             </p>
           </div>
 
@@ -2132,7 +2205,76 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
         ) : null}
 
         <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)]">
-          <section className="min-w-0 rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
+          <section
+            ref={builderSectionRef}
+            className="min-w-0 scroll-mt-24 rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur"
+          >
+            <div className="sticky top-20 z-20 mb-6 rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={goToPreviousStep}
+                    disabled={isFirstStep}
+                    className={`inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition-colors ${
+                      isFirstStep
+                        ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Previous
+                  </button>
+                  <p className="px-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+                    Step {step + 1} of {STEPS.length}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={goToNextStep}
+                    disabled={isLastStep}
+                    className={`inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition-colors ${
+                      isLastStep
+                        ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                        : "bg-slate-900 text-white hover:bg-slate-800"
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSave()}
+                    disabled={isSaveDisabled}
+                    className={`inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition-colors ${
+                      isSaveDisabled
+                        ? "cursor-not-allowed bg-slate-200 text-slate-500"
+                        : "bg-slate-900 text-white hover:bg-slate-800"
+                    }`}
+                  >
+                    {isSaving ? "Saving..." : mode === "edit" ? "Save changes" : "Create job"}
+                  </button>
+                  {mode === "edit" && jobId ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenRun}
+                      disabled={isSaving}
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Run job
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {saveDisabledReason ? (
+                <p className="mt-3 text-sm text-slate-600">{saveDisabledReason}</p>
+              ) : (
+                <p className="mt-3 text-sm text-slate-600">
+                  {mode === "edit"
+                    ? "Save keeps this job. Run opens it so you can start a run without leaving the workflow."
+                    : "Create job saves everything filled in on these steps."}
+                </p>
+              )}
+            </div>
             <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Workflow sheet</p>
               <h3 className="mt-2 text-lg font-semibold text-slate-900">Design the workflow offline</h3>
@@ -3139,39 +3281,6 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
                 </div>
               ) : null}
             </div>
-
-            <div className="sticky bottom-4 z-10 mt-8 flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                onClick={goToPreviousStep}
-                disabled={isFirstStep}
-                className={`inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition-colors ${
-                  isFirstStep
-                    ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                Previous
-              </button>
-
-              <div className="flex items-center gap-3">
-                <p className="hidden text-xs font-medium uppercase tracking-[0.2em] text-slate-500 sm:block">
-                  Step {step + 1} of {STEPS.length}
-                </p>
-                <button
-                  type="button"
-                  onClick={goToNextStep}
-                  disabled={isLastStep}
-                  className={`inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition-colors ${
-                    isLastStep
-                      ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                      : "bg-slate-900 text-white hover:bg-slate-800"
-                  }`}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
           </section>
 
           <aside className="min-w-0 space-y-4">
@@ -3187,28 +3296,10 @@ function BuilderContent({ mode, jobId }: { mode: BuilderMode; jobId?: string }) 
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-sm backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Quick actions</p>
-              <div className="mt-4 flex flex-col gap-3">
-                <button
-                  type="button"
-                  onClick={() => void handleSave()}
-                  disabled={isSaveDisabled}
-                  className={`rounded-full px-5 py-3 text-sm font-semibold transition-colors ${
-                    isSaveDisabled
-                      ? "cursor-not-allowed bg-slate-200 text-slate-500"
-                      : "bg-slate-900 text-white hover:bg-slate-800"
-                  }`}
-                >
-                  {isSaving ? "Saving..." : mode === "edit" ? "Save changes" : "Create job"}
-                </button>
-              </div>
-            </div>
-
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white/70 p-6">
               <p className="text-sm font-semibold text-slate-900">Builder notes</p>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Create, edit, and publish jobs with a live summary map available throughout the builder.
+                Previous, Next, Save, and Run stay at the top of this workflow. The summary on the side is only a readout.
               </p>
             </div>
           </aside>

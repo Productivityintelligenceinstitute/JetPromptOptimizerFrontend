@@ -149,6 +149,14 @@ export const WORKFLOW_CATEGORY_PROFILES: Record<string, WorkflowCategoryProfile>
     specialtyRules: [],
     summary: "Category briefing tools (doc-reader, web-search) with citation and format checks left in place",
   },
+  sow_intelligence: {
+    tools: [
+      perm("doc-reader", { readOnly: true }),
+      perm("docx-generate"),
+    ],
+    specialtyRules: [],
+    summary: "SOW decision pack (doc-reader, docx) grounded in the statement of work and governing MSA",
+  },
 };
 
 export function getWorkflowCategoryProfile(workflowType: string): WorkflowCategoryProfile | null {

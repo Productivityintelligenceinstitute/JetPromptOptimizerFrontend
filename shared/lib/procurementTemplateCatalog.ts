@@ -1,6 +1,6 @@
 /**
  * Procurement flagship template catalog — groups system templates into
- * 5 families × Full / Executive / Scorecard personas for the gallery.
+ * 6 families × Full / Executive / Scorecard personas for the gallery.
  */
 
 export type TemplatePersona = "full" | "executive" | "scorecard";
@@ -10,7 +10,8 @@ export type TemplateFamilyId =
   | "supplier_capability"
   | "rate_card"
   | "supplier_onboarding"
-  | "category_strategy";
+  | "category_strategy"
+  | "sow_intelligence";
 
 export type LifecycleGuide = {
   nextJobName: string;
@@ -184,6 +185,25 @@ export const TEMPLATE_FAMILIES: TemplateFamilyMeta[] = [
     workflowTypes: ["research"],
     demoHint: "Demo KB includes an approved cloud category strategy, stakeholder priorities, and a September signals log.",
     baseName: "Category Strategy Intelligence Briefing",
+  },
+  {
+    id: "sow_intelligence",
+    title: "SOW Intelligence",
+    summary:
+      "Classify a Statement of Work, test whether the deliverables are governable, and decide whether to proceed, clarify, redesign, escalate, or hold.",
+    problem: "SOWs are signed with a deliverable title while the payment and control model is still a staff bench.",
+    outcome: "A decision pack with classification, payment integrity, waste flags, and one disposition.",
+    inputsNeeded: [
+      "Draft or current SOW — job knowledge base or User request",
+      "Business intake — what outcome the buyer actually wants, in the User request",
+      "Governing MSA — job knowledge base, strongly preferred",
+      "Optional: prior SOW, rate card, invoices, or change requests",
+    ],
+    inputSetupNote:
+      "Best path: ingest the draft SOW and the governing MSA on the job page, then state the business intake in the User request. On Purpose, download the workflow sheet, fill Trigger, Inputs, Human Decision, and End State, and upload it. The sheet fills the job fields. It does not replace document ingest. This template does not use web-search or contract-analyzer.",
+    workflowTypes: ["sow_intelligence"],
+    demoHint: "Demo KB includes a thin draft SOW, the governing MSA, and a completed prior fixed-deliverable SOW.",
+    baseName: "SOW Intelligence",
   },
 ];
 

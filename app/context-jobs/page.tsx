@@ -64,6 +64,7 @@ const WORKFLOW_TYPES = [
   { value: "procurement", label: "Procurement" },
   { value: "contract_review", label: "Contract review" },
   { value: "supplier_assessment", label: "Supplier assessment" },
+  { value: "sow_intelligence", label: "SOW intelligence" },
 ] as const;
 
 function formatPercent(value: number | null | undefined): string {
