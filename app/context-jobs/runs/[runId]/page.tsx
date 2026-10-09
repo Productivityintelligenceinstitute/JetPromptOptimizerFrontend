@@ -1382,17 +1382,21 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                         const isRevised =
                           (artifact.purpose || "").toLowerCase() === "revised_contract" ||
                           (artifact.path || "").toLowerCase().includes("revised-contract");
+                        const isBriefing =
+                          (artifact.purpose || "").toLowerCase() === "category_briefing" ||
+                          (artifact.path || "").toLowerCase().includes("category-strategy-briefing");
                         return (
                         <div
                           key={artifact.path}
                           className={`rounded-2xl border px-4 py-3 ${
-                            isRevised
+                            isRevised || isBriefing
                               ? "border-teal-200 bg-teal-50"
                               : "border-slate-200 bg-slate-50"
                           }`}
                         >
                           <p className="truncate text-sm font-semibold text-slate-900">
                             {isRevised ? "Revised contract · " : ""}
+                            {isBriefing ? "Category Strategy briefing · " : ""}
                             {artifact.filename || artifact.path}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
@@ -1406,7 +1410,11 @@ function ContextJobRunDetailContent({ runId }: { runId: string }) {
                             onClick={() => void handleArtifactDownload(artifact)}
                             className="mt-3 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {downloadBusyPath === artifact.path ? "Downloading..." : "Download"}
+                            {downloadBusyPath === artifact.path
+                              ? "Downloading..."
+                              : isBriefing
+                                ? "Download briefing"
+                                : "Download"}
                           </button>
                         </div>
                         );
